@@ -1,0 +1,13 @@
+.git
+.env
+**/.env
+**/secrets
+.local-secrets
+.venv
+**/__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+frontend/node_modules
+frontend/dist

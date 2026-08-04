@@ -1,0 +1,1 @@
+"""MCP protocol gateway."""

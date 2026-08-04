@@ -1,0 +1,95 @@
+name: forgejo-mcp
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      FMCP_ENVIRONMENT: ${FMCP_ENVIRONMENT:-production}
+      FMCP_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-forgejo_mcp}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-forgejo_mcp}
+      FMCP_LOG_LEVEL: ${FMCP_LOG_LEVEL:-INFO}
+      FMCP_LOG_FORMAT: ${FMCP_LOG_FORMAT:-json}
+      FMCP_COOKIE_SECURE: ${FMCP_COOKIE_SECURE:-true}
+      FMCP_ALLOW_INSECURE_FORGEJO_HTTP: ${FMCP_ALLOW_INSECURE_FORGEJO_HTTP:-false}
+      FMCP_MCP_REQUEST_MAX_BYTES: ${FMCP_MCP_REQUEST_MAX_BYTES:-2097152}
+      FMCP_COMMIT_MAX_FILES: ${FMCP_COMMIT_MAX_FILES:-100}
+      FMCP_COMMIT_MAX_TOTAL_BYTES: ${FMCP_COMMIT_MAX_TOTAL_BYTES:-10485760}
+      FMCP_FORGEJO_CONNECT_TIMEOUT_SECONDS: ${FMCP_FORGEJO_CONNECT_TIMEOUT_SECONDS:-5}
+      FMCP_FORGEJO_READ_TIMEOUT_SECONDS: ${FMCP_FORGEJO_READ_TIMEOUT_SECONDS:-30}
+      FMCP_FORGEJO_WRITE_TIMEOUT_SECONDS: ${FMCP_FORGEJO_WRITE_TIMEOUT_SECONDS:-30}
+      FMCP_FORGEJO_POOL_TIMEOUT_SECONDS: ${FMCP_FORGEJO_POOL_TIMEOUT_SECONDS:-5}
+      FMCP_FORGEJO_SAFE_RETRY_ATTEMPTS: ${FMCP_FORGEJO_SAFE_RETRY_ATTEMPTS:-2}
+      FMCP_MCP_RATE_LIMIT_WINDOW_SECONDS: ${FMCP_MCP_RATE_LIMIT_WINDOW_SECONDS:-60}
+      FMCP_MCP_TOKEN_RATE_LIMIT_REQUESTS: ${FMCP_MCP_TOKEN_RATE_LIMIT_REQUESTS:-120}
+      FMCP_MCP_USER_RATE_LIMIT_REQUESTS: ${FMCP_MCP_USER_RATE_LIMIT_REQUESTS:-240}
+      FMCP_SHUTDOWN_GRACE_PERIOD_SECONDS: ${FMCP_SHUTDOWN_GRACE_PERIOD_SECONDS:-30}
+      FMCP_CREDENTIAL_ENCRYPTION_KEY_FILE: /run/secrets/credential_key
+      FMCP_CREDENTIAL_ENCRYPTION_KEY_VERSION: ${FMCP_CREDENTIAL_ENCRYPTION_KEY_VERSION:-1}
+      FMCP_BOOTSTRAP_ADMIN_USERNAME: ${FMCP_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      FMCP_BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      FMCP_HOST: 0.0.0.0
+      FMCP_PORT: 8000
+    command:
+      - sh
+      - -c
+      - >-
+        until python -c "import socket; socket.create_connection(('postgres', 5432), 2).close()";
+        do sleep 1; done;
+        alembic upgrade head &&
+        uvicorn forgejo_mcp.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "${FMCP_HTTP_PORT:-8000}:8000"
+    volumes:
+      - ${FMCP_ADMIN_PASSWORD_FILE:-./secrets/admin_password}:/run/secrets/admin_password:ro
+      - ${FMCP_CREDENTIAL_KEY_FILE:-./secrets/credential_key}:/run/secrets/credential_key:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 45s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-forgejo_mcp}
+      POSTGRES_USER: ${POSTGRES_USER:-forgejo_mcp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  forgejo:
+    image: codeberg.org/forgejo/forgejo:16.0.2-rootless
+    profiles: ["test-forgejo"]
+    user: "1000:1000"
+    environment:
+      FORGEJO__database__DB_TYPE: sqlite3
+      FORGEJO__database__PATH: /var/lib/gitea/data/forgejo.db
+      FORGEJO__security__INSTALL_LOCK: "true"
+      FORGEJO__server__ROOT_URL: http://localhost:3000/
+      FORGEJO__server__DISABLE_SSH: "true"
+    volumes:
+      - forgejo-data:/var/lib/gitea
+      - forgejo-config:/etc/gitea
+    ports:
+      - "${FORGEJO_TEST_HTTP_PORT:-3000}:3000"
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  forgejo-data:
+  forgejo-config:

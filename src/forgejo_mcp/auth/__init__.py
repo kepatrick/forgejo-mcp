@@ -1,0 +1,1 @@
+"""Dashboard and MCP authentication."""

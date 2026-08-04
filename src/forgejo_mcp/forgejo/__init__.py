@@ -1,0 +1,1 @@
+"""Forgejo API integration."""

@@ -1,0 +1,69 @@
+# -----------------------------------------------------------------------------
+# Python bytecode, environments, build output, and package metadata
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Python test, type-checker, linter, and coverage output
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pyright/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# -----------------------------------------------------------------------------
+# Frontend dependencies and generated build output
+# -----------------------------------------------------------------------------
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# -----------------------------------------------------------------------------
+# Local configuration and secrets
+# Keep example configuration files tracked.
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+!*.example.env
+secrets/
+.local-secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# -----------------------------------------------------------------------------
+# Runtime and temporary files
+# -----------------------------------------------------------------------------
+*.log
+*.pid
+*.sqlite
+*.sqlite3
+.tmp/
+tmp/
+
+# -----------------------------------------------------------------------------
+# Editors and operating systems
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

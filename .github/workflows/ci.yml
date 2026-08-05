@@ -1,8 +1,12 @@
 name: CI
 
-# Run manually from the GitHub Actions tab while CI is being validated.
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   backend:
@@ -25,7 +29,7 @@ jobs:
       FMCP_DATABASE_URL: postgresql+asyncpg://forgejo_mcp:integration-test-password@127.0.0.1:5432/forgejo_mcp_test
       FMCP_TEST_DATABASE_URL: postgresql+asyncpg://forgejo_mcp:integration-test-password@127.0.0.1:5432/forgejo_mcp_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
@@ -40,8 +44,8 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
@@ -50,3 +54,14 @@ jobs:
       - run: npm run lint --prefix frontend
       - run: npm run typecheck --prefix frontend
       - run: npm run build --prefix frontend
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: ./scripts/test-full-docker-e2e.sh

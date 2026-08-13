@@ -117,7 +117,7 @@ Write tools change the real Forgejo repository. Review the tool name, repository
 
 If a write tool times out or the connection is interrupted, do not retry immediately. First use a read tool to check whether the Issue, commit, pull request, merge, tag or release was created, avoiding duplicate side effects.
 
-The complete schema and behavior of all 38 tools are documented in the [v1 tool catalog](tools/v1-tool-catalog.md).
+The complete schema and behavior of all 39 tools are documented in the [v1 tool catalog](tools/v1-tool-catalog.md).
 
 ## Token and credential maintenance
 

@@ -25,6 +25,7 @@ def test_registry_contains_stable_default_disabled_tool_spec() -> None:
         "forgejo_get_current_user",
         "forgejo_list_repositories",
         "forgejo_get_repository",
+        "forgejo_create_organization_repository",
         "forgejo_list_branches",
         "forgejo_list_commits",
         "forgejo_get_commit",

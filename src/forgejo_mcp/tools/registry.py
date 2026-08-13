@@ -415,6 +415,27 @@ _TOOL_SPECS = (
         output_schema=_repository_schema(),
     ),
     ToolSpec(
+        name="forgejo_create_organization_repository",
+        title="Create organization repository",
+        description="Create a repository in an existing Forgejo organization.",
+        risk="write",
+        input_schema=_object_schema(
+            {
+                "organization": _OWNER,
+                "name": _REPO,
+                "description": {"type": "string", "maxLength": 2048},
+                "private": {"type": "boolean", "default": False},
+                "auto_init": {"type": "boolean", "default": False},
+                "default_branch": _REF,
+            },
+            ["organization", "name"],
+        ),
+        output_schema=_object_schema(
+            {"repository": _repository_schema(), "audit_event_id": _AUDIT},
+            ["repository", "audit_event_id"],
+        ),
+    ),
+    ToolSpec(
         name="forgejo_list_branches",
         title="List branches",
         description="List branches in a Forgejo repository.",

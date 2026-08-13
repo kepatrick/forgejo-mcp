@@ -11,7 +11,17 @@ _SENSITIVE_FRAGMENTS = (
     "secret",
     "token",
 )
-_TARGET_FIELDS = ("owner", "repo", "number", "path", "ref", "sha", "base", "head")
+_TARGET_FIELDS = (
+    "organization",
+    "owner",
+    "repo",
+    "number",
+    "path",
+    "ref",
+    "sha",
+    "base",
+    "head",
+)
 
 
 @dataclass(frozen=True)

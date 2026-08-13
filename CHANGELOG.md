@@ -21,6 +21,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Static tool registry, global tool toggles, per-user ceilings, per-token grants, and deny-by-default layered authorization policy.
 - Authenticated MCP Streamable HTTP endpoint with constant-time opaque token verification, session credential binding, filtered discovery, call-time authorization, and `forgejo_get_current_user`.
 - Bounded repository listing/detail and branch listing tools with normalized outputs, strict schemas, pagination, response-size limits, and Forgejo error handling.
+- Audited organization repository creation with bounded metadata, visibility and initialization options, Forgejo-side permission enforcement, and a dedicated security review.
 - Commit listing/detail and ref comparison tools with normalized metadata, bounded file summaries, path/ref validation, and schema-validated MCP output.
 - Immutable MCP invocation audit pipeline for allowed, denied, failed, and successful calls, with pre-persistence recursive redaction, bounded arguments, normalized targets, and content-free result summaries.
 - Role-scoped invocation audit query/detail APIs and Dashboard filtering, with Users restricted to their own records and Admins able to review all records.

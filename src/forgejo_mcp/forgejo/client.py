@@ -200,6 +200,42 @@ class ForgejoClient:
         )
         return parse_repository(payload)
 
+    async def create_organization_repository(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        verify_tls: bool,
+        organization: str,
+        name: str,
+        description: str | None,
+        private: bool,
+        auto_init: bool,
+        default_branch: str | None,
+    ) -> RepositorySummary:
+        organization_path = _repository_segment(organization, "organization")
+        data: dict[str, Any] = {
+            "name": _repository_name(name),
+            "private": private,
+            "auto_init": auto_init,
+        }
+        if description is not None:
+            if len(description) > 2048:
+                raise ValidationFailed("repository description is too large")
+            data["description"] = description
+        if default_branch is not None:
+            data["default_branch"] = _ref_value(default_branch, "default branch")
+        payload = await self._write_json(
+            "POST",
+            f"{base_url}/api/v1/orgs/{organization_path}/repos",
+            token,
+            verify_tls,
+            data,
+            "repository",
+            201,
+        )
+        return parse_repository(payload)
+
     async def list_branches(
         self,
         *,
@@ -1510,7 +1546,7 @@ def _file_path(value: str) -> str:
     return normalized
 
 
-def _repository_segment(value: str, label: str) -> str:
+def _repository_name(value: str, label: str = "repository") -> str:
     normalized = value.strip()
     if (
         not normalized
@@ -1519,7 +1555,11 @@ def _repository_segment(value: str, label: str) -> str:
         or any(ord(character) < 32 or ord(character) == 127 for character in normalized)
     ):
         raise ValidationFailed(f"{label} is invalid")
-    return quote(normalized, safe="")
+    return normalized
+
+
+def _repository_segment(value: str, label: str) -> str:
+    return quote(_repository_name(value, label), safe="")
 
 
 def _number(value: int) -> int:

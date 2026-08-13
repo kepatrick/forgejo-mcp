@@ -68,6 +68,14 @@ class ForgejoToolService:
             repo=repo,
         )
 
+    async def create_organization_repository(
+        self, user_id: uuid.UUID, **kwargs: Any
+    ) -> RepositorySummary:
+        return cast(
+            RepositorySummary,
+            await self._call(user_id, "create_organization_repository", **kwargs),
+        )
+
     async def list_branches(
         self,
         user_id: uuid.UUID,

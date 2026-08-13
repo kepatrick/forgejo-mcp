@@ -59,7 +59,7 @@ v0.1.0 is contract-tested against Forgejo `16.0.2+gitea-1.22.0`. See [Known limi
 
 ## 3. Configure global tools
 
-Review the 38-tool catalog and enable only the tools the organization intends to expose. Global disable is the top-level kill switch: a disabled tool is unavailable to every user and token.
+Review the 39-tool catalog and enable only the tools the organization intends to expose. Global disable is the top-level kill switch: a disabled tool is unavailable to every user and token.
 
 Suggested rollout policy:
 

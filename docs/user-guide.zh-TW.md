@@ -117,7 +117,7 @@ Write tools 會直接修改真實 Forgejo repository。允許 client 執行前�
 
 若 write tool 發生 timeout 或連線中斷，不要立刻重試；請先使用 read tool 確認 Issue、commit、PR、merge、tag 或 release 是否已建立，避免重複操作。
 
-全部 38 個工具的 schema 與行為請參閱 [v1 工具目錄](tools/v1-tool-catalog.md)。
+全部 39 個工具的 schema 與行為請參閱 [v1 工具目錄](tools/v1-tool-catalog.md)。
 
 ## Token 與 credential 維護
 

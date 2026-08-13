@@ -35,7 +35,8 @@ v0.1.0 是第一個開源版本，已提供完整 Forgejo 開發流程與核心�
 
 ## 工具範圍
 
-- 目前包含 38 個以 workflow 為導向的工具，不是一對一包裝所有 Forgejo API endpoints。
+- 目前包含 39 個以 workflow 為導向的工具，不是一對一包裝所有 Forgejo API endpoints。
+- Repository 建立僅支援既有組織，並受儲存的 PAT 在 Forgejo 中實際權限限制。
 - Organization administration、repository deletion、Forgejo user administration、SSH key management、package administration 與 arbitrary API passthrough 明確排除。
 - Workflow dispatch 需要 Forgejo Actions，以及 target repository 中既有的 workflow file。
 - Forgejo MCP authorization 無法超越 Forgejo 本身拒絕的 repository access 或 PAT scopes。

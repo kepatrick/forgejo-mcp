@@ -2,16 +2,16 @@
 
 本文件是 Forgejo MCP **v1.0 工具功能、公開名稱及 schema 邊界的規範文件**。實作、測試、Dashboard 權限顯示與相容性判斷均以本文件為準。
 
-> 狀態：38 個 v1 工具已實作。公開 tool name 與已發布 schema 視為 SemVer public API。
+> 狀態：39 個 v1 工具已實作。公開 tool name 與已發布 schema 視為 SemVer public API。
 
 ## 1. v1 範圍
 
-v1 提供 24 個唯讀工具及 14 個寫入工具，共 38 個。平台不提供任意 HTTP request、任意 URL 或通用 Forgejo API proxy；每個工具都必須對應 Forgejo v16-compatible OpenAPI endpoint。
+v1 提供 24 個唯讀工具及 15 個寫入工具，共 39 個。平台不提供任意 HTTP request、任意 URL 或通用 Forgejo API proxy；每個工具都必須對應 Forgejo v16-compatible OpenAPI endpoint。
 
 | 批次 | 功能 | Tools | 狀態 |
 |---|---|---:|---|
 | 0 | Forgejo principal | 1 | 已完成 |
-| 1 | Repository、contents 與 branch | 5 | 已完成 |
+| 1 | Repository、contents 與 branch | 6 | 已完成 |
 | 2 | Commit、compare 與 status | 4 | 已完成 |
 | 3 | Issue 與 comments | 3 read + 3 write | 已完成 |
 | 4 | Pull request、review 與 merge | 5 read + 6 write | 已完成 |
@@ -234,6 +234,15 @@ merged_at: datetime | null
 - **預期最小 scope:** `read:repository`
 - **Input:** `owner`、`repo`。
 - **Output:** `RepositorySummary`，另含 optional `stars_count`、`forks_count`、`open_issues_count`、`permissions`。
+
+### 4.3a `forgejo_create_organization_repository`
+
+- **Risk:** `write`
+- **Forgejo:** `POST /api/v1/orgs/{organization}/repos`
+- **預期最小 scope:** 能在指定組織建立 repository 的 Forgejo PAT 權限；實際授權由 Forgejo 驗證。
+- **Input:** required `organization`、`name`；optional `description`、`private`（default `false`）、`auto_init`（default `false`）、`default_branch`。
+- **Output:** `repository: RepositorySummary` 與 `audit_event_id`。
+- 不建立組織、不修改組織權限，亦不允許覆寫 Forgejo base URL。組織名稱會作為單一 path segment 驗證與編碼；repository 名稱、描述與 default branch 皆有長度及控制字元限制。
 
 ### 4.4 `forgejo_get_file_content`
 
@@ -503,7 +512,7 @@ Workflow 工具只提供 Forgejo v16-compatible OpenAPI 已確認的 `workflow_d
 v1 不實作也不在 registry 中預留以下工具：
 
 - Delete repository、branch、tag、issue、PR、release 或 comment。
-- Create/update/delete repository。
+- Update/delete repository；建立 repository 僅限既有組織，且只能透過 `forgejo_create_organization_repository`。
 - Protected branch、collaborator、team、organization 權限管理。
 - Webhook、deploy key、GPG key、OAuth application 管理。
 - 未由最低支援 Forgejo OpenAPI 確認的 Actions run/job/log/rerun，以及 runner、package、secret 或 variable 管理。
@@ -538,7 +547,7 @@ v1 不實作也不在 registry 中預留以下工具：
 
 最低支援版本鎖定為 Forgejo `16.0.2+gitea-1.22.0`，測試 image 固定使用 `codeberg.org/forgejo/forgejo:16.0.2-rootless`。
 
-- `tests/contracts/forgejo-v16-openapi.json` 保存 38 個 MCP tools 對應的 method、path、operation ID，以及完整 `/swagger.v1.json` SHA-256。
+- `tests/contracts/forgejo-v16-openapi.json` 保存 39 個 MCP tools 對應的 method、path、operation ID，以及完整 `/swagger.v1.json` SHA-256。
 - `scripts/verify_forgejo_openapi.py` 驗證實際 instance 的版本、checksum、registry 完整性與每個 operation。
 - `scripts/test-full-docker-e2e.sh` 在每次 CI 以 pinned image 執行 contract verification 及完整 MCP development flow。
 - 正式發布前仍須加入最低與最新支援版本的 integration matrix。

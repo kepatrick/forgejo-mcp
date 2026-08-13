@@ -170,6 +170,61 @@ async def test_get_repository_and_list_branches_encode_paths() -> None:
     assert branches.items[0].protected is True
 
 
+async def test_create_organization_repository_posts_bounded_options() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "POST"
+        assert request.url.path == "/api/v1/orgs/platform team/repos"
+        assert request.url.raw_path == b"/api/v1/orgs/platform%20team/repos"
+        assert request.read().decode() == (
+            '{"name":"new-repo","private":true,"auto_init":true,'
+            '"description":"Service repository","default_branch":"main"}'
+        )
+        payload = repository_payload()
+        payload.update(
+            {
+                "owner": {"login": "platform team"},
+                "name": "new-repo",
+                "full_name": "platform team/new-repo",
+            }
+        )
+        return httpx.Response(201, json=payload)
+
+    client = ForgejoClient(connect_timeout_seconds=2, transport=httpx.MockTransport(handler))
+    repository = await client.create_organization_repository(
+        base_url="https://git.example.test",
+        token="pat",
+        verify_tls=True,
+        organization="platform team",
+        name="new-repo",
+        description="Service repository",
+        private=True,
+        auto_init=True,
+        default_branch="main",
+    )
+
+    assert repository.full_name == "platform team/new-repo"
+
+
+async def test_create_organization_repository_validates_input() -> None:
+    client = ForgejoClient(
+        connect_timeout_seconds=2,
+        transport=httpx.MockTransport(lambda _request: httpx.Response(500)),
+    )
+
+    with pytest.raises(ValidationFailed, match="organization"):
+        await client.create_organization_repository(
+            base_url="https://git.example.test",
+            token="pat",
+            verify_tls=True,
+            organization="bad/org",
+            name="repo",
+            description=None,
+            private=False,
+            auto_init=False,
+            default_branch=None,
+        )
+
+
 def commit_payload(sha: str = "abc123") -> dict[str, object]:
     return {
         "sha": sha,

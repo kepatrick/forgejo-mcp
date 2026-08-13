@@ -260,6 +260,20 @@ async def _execute_tool(
             repo=cast(str, arguments["repo"]),
         )
         return repository.model_dump(mode="json")
+    if name == "forgejo_create_organization_repository":
+        repository = await tools.create_organization_repository(
+            user_id,
+            organization=cast(str, arguments["organization"]),
+            name=cast(str, arguments["name"]),
+            description=cast(str | None, arguments.get("description")),
+            private=cast(bool, arguments.get("private", False)),
+            auto_init=cast(bool, arguments.get("auto_init", False)),
+            default_branch=cast(str | None, arguments.get("default_branch")),
+        )
+        return {
+            "repository": repository.model_dump(mode="json"),
+            "audit_event_id": audit_event_id,
+        }
     if name == "forgejo_list_branches":
         branch_page = await tools.list_branches(
             user_id,

@@ -73,6 +73,15 @@ def create_forgejo_resources() -> dict[str, str]:
         body={"name": f"full-e2e-reviewer-{suffix}", "scopes": ["all"]},
     )["sha1"]
     forgejo_request(
+        "/orgs",
+        method="POST",
+        token=developer,
+        body={
+            "username": "full-workflow-org",
+            "full_name": "Full Workflow Organization",
+        },
+    )
+    forgejo_request(
         "/user/repos",
         method="POST",
         token=developer,
@@ -312,6 +321,18 @@ def run_mcp_flow(mcp_tokens: dict[str, str]) -> None:
     assert reviewer_user["username"] == "reviewer"
 
     repository = {"owner": "developer", "repo": "full-workflow"}
+    organization_repository = developer.call(
+        "forgejo_create_organization_repository",
+        {
+            "organization": "full-workflow-org",
+            "name": "mcp-created",
+            "description": "Created through the Forgejo MCP E2E flow",
+            "auto_init": True,
+            "default_branch": "main",
+        },
+    )["repository"]
+    assert organization_repository["full_name"] == "full-workflow-org/mcp-created"
+    assert organization_repository["default_branch"] == "main"
     repositories = developer.call("forgejo_list_repositories", {"limit": 100})
     assert any(item["full_name"] == "developer/full-workflow" for item in repositories["items"])
     repository_metadata = developer.call("forgejo_get_repository", repository)

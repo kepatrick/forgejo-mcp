@@ -6,7 +6,7 @@
     "forgejo_get_current_user": {"method": "get", "path": "/user", "operation_id": "userGetCurrent"},
     "forgejo_list_repositories": {"method": "get", "path": "/user/repos", "operation_id": "userCurrentListRepos"},
     "forgejo_get_repository": {"method": "get", "path": "/repos/{owner}/{repo}", "operation_id": "repoGet"},
-    "forgejo_create_organization_repository": {"method": "post", "path": "/orgs/{org}/repos", "operation_id": "orgCreateRepo"},
+    "forgejo_create_organization_repository": {"method": "post", "path": "/orgs/{org}/repos", "operation_id": "createOrgRepo"},
     "forgejo_list_branches": {"method": "get", "path": "/repos/{owner}/{repo}/branches", "operation_id": "repoListBranches"},
     "forgejo_list_commits": {"method": "get", "path": "/repos/{owner}/{repo}/commits", "operation_id": "repoGetAllCommits"},
     "forgejo_get_commit": {"method": "get", "path": "/repos/{owner}/{repo}/git/commits/{sha}", "operation_id": "repoGetSingleCommit"},

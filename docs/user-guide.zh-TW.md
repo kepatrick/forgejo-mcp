@@ -109,15 +109,16 @@ Authorization: Bearer fmcp_...
 4. 以單一 commit 變更多個檔案；
 5. 建立 pull request，並檢視其中的 commits、diff 與 changed files；
 6. 要求 reviewer，並提交、列出或讀取特定 review；
-7. 檢視 commit status 並 dispatch workflow；
-8. 確認 pull request 是否已合併，或執行 merge；
-9. 建立 tag 與 release。
+7. 檢視 commit status、dispatch workflow，並查看 Actions run、job、log 與 artifact；
+8. 取消執行中的 Action，或刪除已完成的 Action run；
+9. 確認 pull request 是否已合併，或執行 merge；
+10. 建立 tag 與 release。
 
 Write tools 會直接修改真實 Forgejo repository。允許 client 執行前，請檢查工具名稱、repository、branch 與 proposed arguments。`forgejo_get_pull_request_merge_status` 只表示 PR 是否已經合併；是否可合併請查看 `forgejo_get_pull_request` 的 `mergeable`。
 
 若 write tool 發生 timeout 或連線中斷，不要立刻重試；請先使用 read tool 確認 Issue、commit、PR、merge、tag 或 release 是否已建立，避免重複操作。
 
-全部 39 個工具的 schema 與行為請參閱 [v1 工具目錄](tools/v1-tool-catalog.md)。
+全部 47 個工具的 schema 與行為請參閱 [v1 工具目錄](tools/v1-tool-catalog.md)。
 
 ## Token 與 credential 維護
 

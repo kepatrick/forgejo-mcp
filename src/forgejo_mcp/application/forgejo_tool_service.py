@@ -285,6 +285,40 @@ class ForgejoToolService:
     async def get_commit_status(self, user_id: uuid.UUID, **kwargs: Any) -> dict[str, Any]:
         return cast(dict[str, Any], await self._call(user_id, "get_commit_status", **kwargs))
 
+    async def list_action_runs(self, user_id: uuid.UUID, **kwargs: Any) -> dict[str, Any]:
+        return cast(dict[str, Any], await self._call(user_id, "list_action_runs", **kwargs))
+
+    async def get_action_run(self, user_id: uuid.UUID, **kwargs: Any) -> dict[str, Any]:
+        return cast(dict[str, Any], await self._call(user_id, "get_action_run", **kwargs))
+
+    async def list_action_run_jobs(
+        self, user_id: uuid.UUID, **kwargs: Any
+    ) -> BoundedList[dict[str, Any]]:
+        return cast(
+            BoundedList[dict[str, Any]],
+            await self._call(user_id, "list_action_run_jobs", **kwargs),
+        )
+
+    async def get_action_job_log(self, user_id: uuid.UUID, **kwargs: Any) -> dict[str, Any]:
+        return cast(dict[str, Any], await self._call(user_id, "get_action_job_log", **kwargs))
+
+    async def get_action_run_logs(self, user_id: uuid.UUID, **kwargs: Any) -> dict[str, Any]:
+        return cast(dict[str, Any], await self._call(user_id, "get_action_run_logs", **kwargs))
+
+    async def list_action_run_artifacts(
+        self, user_id: uuid.UUID, **kwargs: Any
+    ) -> Page[dict[str, Any]]:
+        return cast(
+            Page[dict[str, Any]],
+            await self._call(user_id, "list_action_run_artifacts", **kwargs),
+        )
+
+    async def cancel_action_run(self, user_id: uuid.UUID, **kwargs: Any) -> None:
+        await self._call(user_id, "cancel_action_run", **kwargs)
+
+    async def delete_action_run(self, user_id: uuid.UUID, **kwargs: Any) -> None:
+        await self._call(user_id, "delete_action_run", **kwargs)
+
     async def dispatch_workflow(self, user_id: uuid.UUID, **kwargs: Any) -> None:
         await self._call(user_id, "dispatch_workflow", **kwargs)
 

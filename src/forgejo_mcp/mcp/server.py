@@ -507,6 +507,54 @@ async def _execute_tool(
         return {"number": number, "merged": merged}
     if name == "forgejo_get_commit_status":
         return await tools.get_commit_status(user_id, **common, ref=cast(str, arguments["ref"]))
+    if name == "forgejo_list_action_runs":
+        return await tools.list_action_runs(
+            user_id,
+            **common,
+            event=cast(list[str] | None, arguments.get("event")),
+            status=cast(list[str] | None, arguments.get("status")),
+            workflow_id=cast(str | None, arguments.get("workflow_id")),
+            run_number=cast(int | None, arguments.get("run_number")),
+            head_sha=cast(str | None, arguments.get("head_sha")),
+            ref=cast(str | None, arguments.get("ref")),
+            page=cast(int, arguments.get("page", 1)),
+            limit=cast(int, arguments.get("limit", 30)),
+        )
+    if name == "forgejo_get_action_run":
+        return await tools.get_action_run(user_id, **common, run_id=cast(int, arguments["run_id"]))
+    if name == "forgejo_list_action_run_jobs":
+        jobs = await tools.list_action_run_jobs(
+            user_id, **common, run_id=cast(int, arguments["run_id"])
+        )
+        return {"items": jobs.items, "truncated": jobs.truncated}
+    if name == "forgejo_get_action_job_log":
+        return await tools.get_action_job_log(
+            user_id,
+            **common,
+            job_id=cast(int, arguments["job_id"]),
+            attempt=cast(int | None, arguments.get("attempt")),
+        )
+    if name == "forgejo_get_action_run_logs":
+        return await tools.get_action_run_logs(
+            user_id, **common, run_id=cast(int, arguments["run_id"])
+        )
+    if name == "forgejo_list_action_run_artifacts":
+        return _page_result(
+            await tools.list_action_run_artifacts(
+                user_id,
+                **common,
+                run_id=cast(int, arguments["run_id"]),
+                name=cast(str | None, arguments.get("name")),
+                page=cast(int, arguments.get("page", 1)),
+                limit=cast(int, arguments.get("limit", 30)),
+            )
+        )
+    if name == "forgejo_cancel_action_run":
+        await tools.cancel_action_run(user_id, **common, run_id=cast(int, arguments["run_id"]))
+        return {"cancelled": True, "audit_event_id": audit_event_id}
+    if name == "forgejo_delete_action_run":
+        await tools.delete_action_run(user_id, **common, run_id=cast(int, arguments["run_id"]))
+        return {"deleted": True, "audit_event_id": audit_event_id}
     if name == "forgejo_dispatch_workflow":
         await tools.dispatch_workflow(
             user_id,
@@ -607,7 +655,10 @@ def _safe_error_message(error: Exception) -> str:
 
 def _page_result(result: Any) -> dict[str, Any]:
     return {
-        "items": [item.model_dump(mode="json") for item in result.items],
+        "items": [
+            item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+            for item in result.items
+        ],
         "page": result.page,
         "limit": result.limit,
         "has_more": result.has_more,

@@ -10,7 +10,7 @@ Users connect with their own scoped Forgejo personal access tokens (PATs). Admin
 
 ## What it provides
 
-- 39 tools for repositories, organization repository creation, git trees, branches, commits, labels, milestones, Issues, pull requests, reviews, workflows, tags and releases.
+- 47 tools for repositories, organization repository creation, git trees, branches, commits, labels, milestones, Issues, pull requests, reviews, Actions runs, jobs, logs and artifacts, tags and releases.
 - Global, user and token-level tool authorization in addition to Forgejo's own permissions.
 - Per-user Forgejo identity through a verified, scoped PAT.
 - AES-256-GCM encryption for stored PATs and show-once MCP tokens.

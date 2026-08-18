@@ -59,7 +59,7 @@ v0.1.0 已依 Forgejo `16.0.2+gitea-1.22.0` contract 測試。連接其他版本
 
 ## 3. 設定全域工具
 
-檢查 39 個工具，並只啟用組織預計提供的工具。Global disable 是最高層的 kill switch：停用後，所有使用者與 token 都無法使用該工具。
+檢查 47 個工具，並只啟用組織預計提供的工具。Global disable 是最高層的 kill switch：停用後，所有使用者與 token 都無法使用該工具。
 
 建議逐步開放：
 

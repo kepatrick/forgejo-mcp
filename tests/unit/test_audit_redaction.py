@@ -48,6 +48,26 @@ def test_redaction_truncates_large_text_and_extracts_safe_target() -> None:
     }
 
 
+def test_extract_target_includes_action_identifiers() -> None:
+    assert extract_target(
+        {
+            "owner": "patrick",
+            "repo": "forgejo-mcp",
+            "run_id": 42,
+            "job_id": 51,
+            "attempt": 2,
+            "workflow_id": "ci.yml",
+        }
+    ) == {
+        "owner": "patrick",
+        "repo": "forgejo-mcp",
+        "run_id": 42,
+        "job_id": 51,
+        "attempt": 2,
+        "workflow_id": "ci.yml",
+    }
+
+
 def test_result_summary_counts_git_tree_entries() -> None:
     summary, truncated = summarize_result({"entries": [{"path": "README.md"}], "truncated": False})
 

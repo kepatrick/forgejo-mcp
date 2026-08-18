@@ -109,15 +109,16 @@ Depending on your grants, an MCP client can:
 4. commit multiple file changes atomically;
 5. create a pull request and inspect its commits, diff and changed files;
 6. request reviewers and submit, list or load a specific review;
-7. inspect commit status and dispatch a workflow;
-8. check whether a pull request has already been merged, or merge it;
-9. create a tag and release.
+7. inspect commit status, dispatch a workflow, and inspect Actions runs, jobs, logs and artifacts;
+8. cancel a running Action or delete a completed Action run;
+9. check whether a pull request has already been merged, or merge it;
+10. create a tag and release.
 
 Write tools change the real Forgejo repository. Review the tool name, repository, branch and proposed arguments before approving a client action. `forgejo_get_pull_request_merge_status` reports only whether a pull request has already been merged; use the `mergeable` field from `forgejo_get_pull_request` to check whether it can be merged.
 
 If a write tool times out or the connection is interrupted, do not retry immediately. First use a read tool to check whether the Issue, commit, pull request, merge, tag or release was created, avoiding duplicate side effects.
 
-The complete schema and behavior of all 39 tools are documented in the [v1 tool catalog](tools/v1-tool-catalog.md).
+The complete schema and behavior of all 47 tools are documented in the [v1 tool catalog](tools/v1-tool-catalog.md).
 
 ## Token and credential maintenance
 

@@ -10,7 +10,7 @@ Forgejo MCP 是一套自架的 [Model Context Protocol](https://modelcontextprot
 
 ## 能做什麼
 
-- 提供 39 個工具，涵蓋 repository、組織 repository 建立、git tree、branch、commit、label、milestone、Issue、pull request、review、workflow、tag 與 release。
+- 提供 47 個工具，涵蓋 repository、組織 repository 建立、git tree、branch、commit、label、milestone、Issue、pull request、review、Actions run、job、log、artifact、tag 與 release。
 - 在 Forgejo 原有權限之外，增加全域、使用者與 token 三層工具授權。
 - 使用者透過已驗證且限制權限範圍的 Forgejo PAT，以自己的 Forgejo 身分操作。
 - 使用 AES-256-GCM 加密儲存 PAT，MCP token 只顯示一次。

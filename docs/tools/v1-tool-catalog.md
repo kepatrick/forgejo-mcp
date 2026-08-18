@@ -2,11 +2,11 @@
 
 本文件是 Forgejo MCP **v1.0 工具功能、公開名稱及 schema 邊界的規範文件**。實作、測試、Dashboard 權限顯示與相容性判斷均以本文件為準。
 
-> 狀態：39 個 v1 工具已實作。公開 tool name 與已發布 schema 視為 SemVer public API。
+> 狀態：47 個 v1 工具已實作。公開 tool name 與已發布 schema 視為 SemVer public API。
 
 ## 1. v1 範圍
 
-v1 提供 24 個唯讀工具及 15 個寫入工具，共 39 個。平台不提供任意 HTTP request、任意 URL 或通用 Forgejo API proxy；每個工具都必須對應 Forgejo v16-compatible OpenAPI endpoint。
+v1 提供 30 個唯讀工具及 17 個寫入工具，共 47 個。平台不提供任意 HTTP request、任意 URL 或通用 Forgejo API proxy；每個工具都必須對應 Forgejo v16-compatible OpenAPI endpoint。
 
 | 批次 | 功能 | Tools | 狀態 |
 |---|---|---:|---|
@@ -18,6 +18,7 @@ v1 提供 24 個唯讀工具及 15 個寫入工具，共 39 個。平台不提�
 | 5 | File content 與 multi-file commit | 2 | 已完成 |
 | 6 | Workflow dispatch、tag 與 release | 3 | 已完成 |
 | 7 | Git tree、label、milestone 與 PR 查詢補強 | 6 read | 已完成 |
+| 8 | Actions run、job、log、artifact、cancel 與 delete | 6 read + 2 write | 已完成 |
 
 ## 2. 共通契約
 
@@ -475,16 +476,24 @@ Forgejo v16 compare response 不提供可靠的 ahead/behind 或 resolved base/h
 
 Review event 限定 `APPROVED`、`REQUEST_CHANGES` 或 `COMMENT`，可包含最多 100 個 inline comments。Merge 支援 Forgejo OpenAPI 宣告的 merge、squash、rebase、rebase-merge 與 manually-merged strategy。
 
-### 5.8 Commit status、workflow、tag 與 release
+### 5.8 Commit status、Actions、tag 與 release
 
 | Tool | Forgejo endpoint |
 |---|---|
 | `forgejo_get_commit_status` | `GET /repos/{owner}/{repo}/commits/{ref}/status` |
+| `forgejo_list_action_runs` | `GET /repos/{owner}/{repo}/actions/runs` |
+| `forgejo_get_action_run` | `GET /repos/{owner}/{repo}/actions/runs/{run_id}` |
+| `forgejo_list_action_run_jobs` | `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs` |
+| `forgejo_get_action_job_log` | `GET /repos/{owner}/{repo}/actions/jobs/{job_id}/logs` |
+| `forgejo_get_action_run_logs` | `GET /repos/{owner}/{repo}/actions/runs/{run_id}/logs` |
+| `forgejo_list_action_run_artifacts` | `GET /repos/{owner}/{repo}/actions/runs/{run_id}/artifacts` |
+| `forgejo_cancel_action_run` | `POST /repos/{owner}/{repo}/actions/runs/{run_id}/cancel` |
+| `forgejo_delete_action_run` | `DELETE /repos/{owner}/{repo}/actions/runs/{run_id}` |
 | `forgejo_dispatch_workflow` | `POST /repos/{owner}/{repo}/actions/workflows/{workflow}/dispatches` |
 | `forgejo_create_tag` | `POST /repos/{owner}/{repo}/tags` |
 | `forgejo_create_release` | `POST /repos/{owner}/{repo}/releases` |
 
-Workflow 工具只提供 Forgejo v16-compatible OpenAPI 已確認的 `workflow_dispatch`；run、job、log 與 rerun 工具須在最低支援版本 Swagger 確認後才能新增。
+Run 與 artifact 清單皆有界；job 清單最多回傳 100 筆。Job log 最多回傳 1 MiB UTF-8 文字並提供原始大小、SHA-256 與 `truncated`。Run log ZIP 最大接受 10 MiB，最多解開 100 個檔案且合計最多回傳 1 MiB 文字；不下載 artifact 內容。`forgejo_delete_action_run` 只適用於 Forgejo 允許刪除的已完成 run。Forgejo v16 沒有公開 PAT REST rerun endpoint，因此不提供 rerun 工具。
 
 ## 6. Audit 規格
 
@@ -515,7 +524,7 @@ v1 不實作也不在 registry 中預留以下工具：
 - Update/delete repository；建立 repository 僅限既有組織，且只能透過 `forgejo_create_organization_repository`。
 - Protected branch、collaborator、team、organization 權限管理。
 - Webhook、deploy key、GPG key、OAuth application 管理。
-- 未由最低支援 Forgejo OpenAPI 確認的 Actions run/job/log/rerun，以及 runner、package、secret 或 variable 管理。
+- Actions rerun，以及 runner、package、secret 或 variable 管理。
 - Generic Forgejo API request/proxy。
 - 任意 URL fetch 或讓 argument 覆寫 Forgejo base URL。
 
@@ -547,7 +556,7 @@ v1 不實作也不在 registry 中預留以下工具：
 
 最低支援版本鎖定為 Forgejo `16.0.2+gitea-1.22.0`，測試 image 固定使用 `codeberg.org/forgejo/forgejo:16.0.2-rootless`。
 
-- `tests/contracts/forgejo-v16-openapi.json` 保存 39 個 MCP tools 對應的 method、path、operation ID，以及完整 `/swagger.v1.json` SHA-256。
+- `tests/contracts/forgejo-v16-openapi.json` 保存 47 個 MCP tools 對應的 method、path、operation ID，以及完整 `/swagger.v1.json` SHA-256。
 - `scripts/verify_forgejo_openapi.py` 驗證實際 instance 的版本、checksum、registry 完整性與每個 operation。
 - `scripts/test-full-docker-e2e.sh` 在每次 CI 以 pinned image 執行 contract verification 及完整 MCP development flow。
 - 正式發布前仍須加入最低與最新支援版本的 integration matrix。

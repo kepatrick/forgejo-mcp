@@ -2,7 +2,9 @@ import asyncio
 import base64
 import binascii
 import hashlib
+import io
 import time
+import zipfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -52,6 +54,9 @@ MAX_USER_RESPONSE_BYTES = 256 * 1024
 MAX_JSON_RESPONSE_BYTES = 2 * 1024 * 1024
 MAX_FILE_CONTENT_BYTES = 1024 * 1024
 MAX_DIFF_BYTES = 2 * 1024 * 1024
+MAX_ACTION_LOG_BYTES = 1024 * 1024
+MAX_ACTION_LOG_ARCHIVE_BYTES = 10 * 1024 * 1024
+MAX_ACTION_LOG_FILES = 100
 
 
 @dataclass(frozen=True)
@@ -112,6 +117,17 @@ def normalize_base_url(value: str) -> str:
     )
     return urlunsplit(normalized)
 
+
+_ACTION_STATUS_VALUES = {
+    "unknown",
+    "waiting",
+    "running",
+    "success",
+    "failure",
+    "cancelled",
+    "skipped",
+    "blocked",
+}
 
 _REPOSITORY_ORDER_VALUES = {
     "name",
@@ -1043,6 +1059,303 @@ class ForgejoClient:
         )
         return _combined_status(payload)
 
+    async def list_action_runs(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        verify_tls: bool,
+        owner: str,
+        repo: str,
+        event: list[str] | None,
+        status: list[str] | None,
+        workflow_id: str | None,
+        run_number: int | None,
+        head_sha: str | None,
+        ref: str | None,
+        page: int,
+        limit: int,
+    ) -> dict[str, Any]:
+        _validate_page(page, limit)
+        params: dict[str, Any] = {"page": page, "limit": limit}
+        if event is not None:
+            params["event"] = _string_list(event, "action events", 20)
+        if status is not None:
+            statuses = _string_list(status, "action statuses", 20)
+            if not set(statuses) <= _ACTION_STATUS_VALUES:
+                raise ValidationFailed("action status is invalid")
+            params["status"] = statuses
+        for key, value in {
+            "workflow_id": workflow_id,
+            "head_sha": head_sha,
+            "ref": ref,
+        }.items():
+            if value is not None:
+                params[key] = _ref_value(value, key.replace("_", " "))
+        if run_number is not None:
+            params["run_number"] = _positive_id(run_number, "run number")
+        payload = await self._get_json(
+            endpoint=self._repo_endpoint(base_url, owner, repo, "actions/runs"),
+            token=token,
+            verify_tls=verify_tls,
+            params=params,
+            resource="action run list",
+        )
+        if not isinstance(payload, dict) or not isinstance(payload.get("workflow_runs"), list):
+            raise ExternalServiceUnavailable("Forgejo returned an invalid action run list")
+        runs = payload["workflow_runs"]
+        if not all(isinstance(item, dict) for item in runs):
+            raise ExternalServiceUnavailable("Forgejo returned an invalid action run list")
+        total_count = payload.get("total_count", len(runs))
+        if not isinstance(total_count, int) or isinstance(total_count, bool) or total_count < 0:
+            raise ExternalServiceUnavailable("Forgejo returned an invalid action run list")
+        return {
+            "items": [_action_run_summary(item) for item in runs],
+            "page": page,
+            "limit": limit,
+            "has_more": page * limit < total_count,
+            "total_count": total_count,
+        }
+
+    async def get_action_run(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        verify_tls: bool,
+        owner: str,
+        repo: str,
+        run_id: int,
+    ) -> dict[str, Any]:
+        payload = await self._get_json(
+            endpoint=self._repo_endpoint(
+                base_url, owner, repo, f"actions/runs/{_positive_id(run_id, 'run ID')}"
+            ),
+            token=token,
+            verify_tls=verify_tls,
+            params=None,
+            resource="action run",
+        )
+        return _action_run_summary(payload)
+
+    async def list_action_run_jobs(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        verify_tls: bool,
+        owner: str,
+        repo: str,
+        run_id: int,
+    ) -> BoundedList[dict[str, Any]]:
+        payload = await self._get_json(
+            endpoint=self._repo_endpoint(
+                base_url,
+                owner,
+                repo,
+                f"actions/runs/{_positive_id(run_id, 'run ID')}/jobs",
+            ),
+            token=token,
+            verify_tls=verify_tls,
+            params=None,
+            resource="action run jobs",
+        )
+        if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
+            raise ExternalServiceUnavailable("Forgejo returned invalid action run jobs")
+        return BoundedList(
+            items=[_action_job_summary(item) for item in payload[:100]],
+            truncated=len(payload) > 100,
+        )
+
+    async def get_action_job_log(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        verify_tls: bool,
+        owner: str,
+        repo: str,
+        job_id: int,
+        attempt: int | None,
+    ) -> dict[str, Any]:
+        params = {"attempt": _positive_id(attempt, "attempt")} if attempt is not None else None
+        response = await self._request(
+            method="GET",
+            endpoint=self._repo_endpoint(
+                base_url, owner, repo, f"actions/jobs/{_positive_id(job_id, 'job ID')}/logs"
+            ),
+            token=token,
+            verify_tls=verify_tls,
+            params=params,
+            json_body=None,
+            resource="action job log",
+            expected_status={200, 206},
+            accept="text/plain",
+        )
+        content = response.content
+        bounded = content[:MAX_ACTION_LOG_BYTES]
+        return {
+            "job_id": job_id,
+            "attempt": attempt,
+            "size": len(content),
+            "sha256": hashlib.sha256(content).hexdigest(),
+            "content": bounded.decode("utf-8", errors="replace"),
+            "truncated": len(content) > len(bounded),
+        }
+
+    async def get_action_run_logs(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        verify_tls: bool,
+        owner: str,
+        repo: str,
+        run_id: int,
+    ) -> dict[str, Any]:
+        response = await self._request(
+            method="GET",
+            endpoint=self._repo_endpoint(
+                base_url,
+                owner,
+                repo,
+                f"actions/runs/{_positive_id(run_id, 'run ID')}/logs",
+            ),
+            token=token,
+            verify_tls=verify_tls,
+            params=None,
+            json_body=None,
+            resource="action run logs",
+            expected_status=200,
+            accept="application/zip",
+        )
+        archive = response.content
+        if len(archive) > MAX_ACTION_LOG_ARCHIVE_BYTES:
+            raise ExternalServiceUnavailable("Forgejo action run logs response is too large")
+        files: list[dict[str, Any]] = []
+        remaining = MAX_ACTION_LOG_BYTES
+        files_truncated = False
+        try:
+            with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+                entries = [entry for entry in bundle.infolist() if not entry.is_dir()]
+                for entry in entries[:MAX_ACTION_LOG_FILES]:
+                    if entry.file_size > MAX_ACTION_LOG_ARCHIVE_BYTES:
+                        raise ExternalServiceUnavailable(
+                            "Forgejo action run logs contain an oversized file"
+                        )
+                    content = bundle.read(entry)
+                    bounded = content[:remaining]
+                    files.append(
+                        {
+                            "name": entry.filename,
+                            "size": len(content),
+                            "sha256": hashlib.sha256(content).hexdigest(),
+                            "content": bounded.decode("utf-8", errors="replace"),
+                            "truncated": len(content) > len(bounded),
+                        }
+                    )
+                    remaining -= len(bounded)
+                    if remaining == 0:
+                        files_truncated = len(entries) > len(files) or len(content) > len(bounded)
+                        break
+                files_truncated = files_truncated or len(entries) > MAX_ACTION_LOG_FILES
+        except (zipfile.BadZipFile, RuntimeError, OSError) as error:
+            raise ExternalServiceUnavailable(
+                "Forgejo returned an invalid action run logs archive"
+            ) from error
+        return {
+            "run_id": run_id,
+            "size": len(archive),
+            "sha256": hashlib.sha256(archive).hexdigest(),
+            "files": files,
+            "files_truncated": files_truncated,
+        }
+
+    async def list_action_run_artifacts(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        verify_tls: bool,
+        owner: str,
+        repo: str,
+        run_id: int,
+        name: str | None,
+        page: int,
+        limit: int,
+    ) -> Page[dict[str, Any]]:
+        _validate_page(page, limit)
+        params: dict[str, Any] = {"page": page, "limit": limit}
+        if name is not None:
+            params["name"] = _ref_value(name, "artifact name")
+        payload = await self._get_json(
+            endpoint=self._repo_endpoint(
+                base_url,
+                owner,
+                repo,
+                f"actions/runs/{_positive_id(run_id, 'run ID')}/artifacts",
+            ),
+            token=token,
+            verify_tls=verify_tls,
+            params=params,
+            resource="action run artifacts",
+        )
+        if not isinstance(payload, list) or not all(isinstance(item, dict) for item in payload):
+            raise ExternalServiceUnavailable("Forgejo returned invalid action run artifacts")
+        items = [_action_artifact_summary(item) for item in payload]
+        return Page(items=items, page=page, limit=limit, has_more=len(items) == limit)
+
+    async def cancel_action_run(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        verify_tls: bool,
+        owner: str,
+        repo: str,
+        run_id: int,
+    ) -> None:
+        await self._request(
+            method="POST",
+            endpoint=self._repo_endpoint(
+                base_url,
+                owner,
+                repo,
+                f"actions/runs/{_positive_id(run_id, 'run ID')}/cancel",
+            ),
+            token=token,
+            verify_tls=verify_tls,
+            params=None,
+            json_body=None,
+            resource="action run cancellation",
+            expected_status=204,
+            accept="application/json",
+        )
+
+    async def delete_action_run(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        verify_tls: bool,
+        owner: str,
+        repo: str,
+        run_id: int,
+    ) -> None:
+        await self._request(
+            method="DELETE",
+            endpoint=self._repo_endpoint(
+                base_url, owner, repo, f"actions/runs/{_positive_id(run_id, 'run ID')}"
+            ),
+            token=token,
+            verify_tls=verify_tls,
+            params=None,
+            json_body=None,
+            resource="action run deletion",
+            expected_status=204,
+            accept="application/json",
+        )
+
     async def dispatch_workflow(
         self,
         *,
@@ -1731,6 +2044,103 @@ def _combined_status(payload: Any) -> dict[str, Any]:
         "total_count": total,
         "statuses": normalized,
         "truncated": len(statuses) > 100,
+    }
+
+
+def _action_run_summary(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ExternalServiceUnavailable("Forgejo returned an invalid action run")
+    run_id = payload.get("id")
+    if not isinstance(run_id, int) or isinstance(run_id, bool) or run_id < 1:
+        raise ExternalServiceUnavailable("Forgejo returned an invalid action run")
+
+    def optional_int(*keys: str) -> int | None:
+        value = next((payload[key] for key in keys if key in payload), None)
+        return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+    def optional_str(*keys: str) -> str | None:
+        value = next((payload[key] for key in keys if key in payload), None)
+        return value if isinstance(value, str) else None
+
+    workflow_id = payload.get("workflow_id")
+    if not isinstance(workflow_id, (str, int)) or isinstance(workflow_id, bool):
+        workflow_id = None
+    return {
+        "id": run_id,
+        "run_number": optional_int("run_number", "index_in_repo"),
+        "name": optional_str("name", "title"),
+        "event": optional_str("event", "trigger_event"),
+        "status": optional_str("status"),
+        "workflow_id": workflow_id,
+        "head_sha": optional_str("head_sha", "commit_sha"),
+        "ref": optional_str("ref", "prettyref"),
+        "html_url": optional_str("html_url"),
+        "created_at": optional_str("created_at", "created"),
+        "started_at": optional_str("started_at", "started"),
+        "completed_at": optional_str("completed_at", "stopped"),
+        "updated_at": optional_str("updated_at", "updated"),
+        "duration": optional_int("duration"),
+    }
+
+
+def _action_job_summary(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ExternalServiceUnavailable("Forgejo returned an invalid action job")
+    job_id = payload.get("id")
+    if not isinstance(job_id, int) or isinstance(job_id, bool) or job_id < 1:
+        raise ExternalServiceUnavailable("Forgejo returned an invalid action job")
+
+    def nullable(key: str, kind: type[Any]) -> Any:
+        value = payload.get(key)
+        return value if isinstance(value, kind) and not isinstance(value, bool) else None
+
+    def string_list(key: str) -> list[str]:
+        value = payload.get(key)
+        return (
+            value
+            if isinstance(value, list) and all(isinstance(item, str) for item in value)
+            else []
+        )
+
+    return {
+        "id": job_id,
+        "run_id": nullable("run_id", int),
+        "name": nullable("name", str),
+        "status": nullable("status", str),
+        "attempt": nullable("attempt", int),
+        "runner_labels": string_list("runs_on"),
+        "needs": string_list("needs"),
+        "started_at": nullable("started_at", str),
+        "completed_at": nullable("completed_at", str),
+    }
+
+
+def _action_artifact_summary(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ExternalServiceUnavailable("Forgejo returned an invalid action artifact")
+    artifact_id = payload.get("id")
+    if not isinstance(artifact_id, int) or isinstance(artifact_id, bool) or artifact_id < 1:
+        raise ExternalServiceUnavailable("Forgejo returned an invalid action artifact")
+    size = payload.get("size_in_bytes")
+    if not isinstance(size, int) or isinstance(size, bool) or size < 0:
+        size = None
+    return {
+        "id": artifact_id,
+        "run_id": payload.get("run_id")
+        if isinstance(payload.get("run_id"), int) and not isinstance(payload.get("run_id"), bool)
+        else None,
+        "name": payload.get("name") if isinstance(payload.get("name"), str) else None,
+        "size_in_bytes": size,
+        "expired": bool(payload.get("expired", False)),
+        "created_at": payload.get("created_at")
+        if isinstance(payload.get("created_at"), str)
+        else None,
+        "expires_at": payload.get("expires_at")
+        if isinstance(payload.get("expires_at"), str)
+        else None,
+        "updated_at": payload.get("updated_at")
+        if isinstance(payload.get("updated_at"), str)
+        else None,
     }
 
 

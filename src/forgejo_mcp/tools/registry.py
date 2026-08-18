@@ -359,6 +359,107 @@ _REVIEWERS = {
     "maxItems": 20,
 }
 _AUDIT = {"type": "string"}
+_ACTION_RUN_SCHEMA = _object_schema(
+    {
+        "id": _NUMBER,
+        "run_number": {"type": ["integer", "null"], "minimum": 1},
+        "name": {"type": ["string", "null"]},
+        "event": {"type": ["string", "null"]},
+        "status": {"type": ["string", "null"]},
+        "workflow_id": {"type": ["string", "integer", "null"]},
+        "head_sha": {"type": ["string", "null"]},
+        "ref": {"type": ["string", "null"]},
+        "html_url": {"type": ["string", "null"]},
+        "created_at": {"type": ["string", "null"]},
+        "started_at": {"type": ["string", "null"]},
+        "completed_at": {"type": ["string", "null"]},
+        "updated_at": {"type": ["string", "null"]},
+        "duration": {"type": ["integer", "null"], "minimum": 0},
+    },
+    [
+        "id",
+        "run_number",
+        "name",
+        "event",
+        "status",
+        "workflow_id",
+        "head_sha",
+        "ref",
+        "html_url",
+        "created_at",
+        "started_at",
+        "completed_at",
+        "updated_at",
+        "duration",
+    ],
+)
+_ACTION_JOB_SCHEMA = _object_schema(
+    {
+        "id": _NUMBER,
+        "run_id": {"type": ["integer", "null"], "minimum": 1},
+        "name": {"type": ["string", "null"]},
+        "status": {"type": ["string", "null"]},
+        "attempt": {"type": ["integer", "null"], "minimum": 1},
+        "runner_labels": {"type": "array", "items": {"type": "string"}},
+        "needs": {"type": "array", "items": {"type": "string"}},
+        "started_at": {"type": ["string", "null"]},
+        "completed_at": {"type": ["string", "null"]},
+    },
+    [
+        "id",
+        "run_id",
+        "name",
+        "status",
+        "attempt",
+        "runner_labels",
+        "needs",
+        "started_at",
+        "completed_at",
+    ],
+)
+_ACTION_ARTIFACT_SCHEMA = _object_schema(
+    {
+        "id": _NUMBER,
+        "run_id": {"type": ["integer", "null"], "minimum": 1},
+        "name": {"type": ["string", "null"]},
+        "size_in_bytes": {"type": ["integer", "null"], "minimum": 0},
+        "expired": {"type": "boolean"},
+        "created_at": {"type": ["string", "null"]},
+        "expires_at": {"type": ["string", "null"]},
+        "updated_at": {"type": ["string", "null"]},
+    },
+    [
+        "id",
+        "run_id",
+        "name",
+        "size_in_bytes",
+        "expired",
+        "created_at",
+        "expires_at",
+        "updated_at",
+    ],
+)
+_ACTION_LOG_SCHEMA = _object_schema(
+    {
+        "job_id": _NUMBER,
+        "attempt": {"type": ["integer", "null"], "minimum": 1},
+        "size": {"type": "integer", "minimum": 0},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "content": {"type": "string"},
+        "truncated": {"type": "boolean"},
+    },
+    ["job_id", "attempt", "size", "sha256", "content", "truncated"],
+)
+_ACTION_LOG_FILE_SCHEMA = _object_schema(
+    {
+        "name": {"type": "string"},
+        "size": {"type": "integer", "minimum": 0},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "content": {"type": "string"},
+        "truncated": {"type": "boolean"},
+    },
+    ["name", "size", "sha256", "content", "truncated"],
+)
 
 _TOOL_SPECS = (
     ToolSpec(
@@ -1151,6 +1252,171 @@ _TOOL_SPECS = (
                 "truncated": {"type": "boolean"},
             },
             ["sha", "state", "total_count", "statuses", "truncated"],
+        ),
+    ),
+    ToolSpec(
+        name="forgejo_list_action_runs",
+        title="List action runs",
+        description="List repository action runs with bounded pagination and optional filters.",
+        risk="read",
+        input_schema=_object_schema(
+            {
+                "owner": _OWNER,
+                "repo": _REPO,
+                "event": {
+                    "type": "array",
+                    "items": _REF,
+                    "maxItems": 20,
+                },
+                "status": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "unknown",
+                            "waiting",
+                            "running",
+                            "success",
+                            "failure",
+                            "cancelled",
+                            "skipped",
+                            "blocked",
+                        ],
+                    },
+                    "maxItems": 20,
+                },
+                "workflow_id": _REF,
+                "run_number": _NUMBER,
+                "head_sha": _REF,
+                "ref": _REF,
+                "page": _PAGE,
+                "limit": _LIMIT,
+            },
+            ["owner", "repo"],
+        ),
+        output_schema=_object_schema(
+            {
+                "items": {"type": "array", "items": _ACTION_RUN_SCHEMA},
+                "page": _PAGE,
+                "limit": _LIMIT,
+                "has_more": {"type": "boolean"},
+                "total_count": {"type": "integer", "minimum": 0},
+            },
+            ["items", "page", "limit", "has_more", "total_count"],
+        ),
+    ),
+    ToolSpec(
+        name="forgejo_get_action_run",
+        title="Get action run",
+        description="Return normalized details for one repository action run.",
+        risk="read",
+        input_schema=_object_schema(
+            {"owner": _OWNER, "repo": _REPO, "run_id": _NUMBER},
+            ["owner", "repo", "run_id"],
+        ),
+        output_schema=_ACTION_RUN_SCHEMA,
+    ),
+    ToolSpec(
+        name="forgejo_list_action_run_jobs",
+        title="List action run jobs",
+        description="List up to 100 jobs belonging to an action run.",
+        risk="read",
+        input_schema=_object_schema(
+            {"owner": _OWNER, "repo": _REPO, "run_id": _NUMBER},
+            ["owner", "repo", "run_id"],
+        ),
+        output_schema=_object_schema(
+            {
+                "items": {"type": "array", "items": _ACTION_JOB_SCHEMA, "maxItems": 100},
+                "truncated": {"type": "boolean"},
+            },
+            ["items", "truncated"],
+        ),
+    ),
+    ToolSpec(
+        name="forgejo_get_action_job_log",
+        title="Get action job log",
+        description="Return up to 1 MiB of plaintext log content for an action job attempt.",
+        risk="read-sensitive",
+        input_schema=_object_schema(
+            {
+                "owner": _OWNER,
+                "repo": _REPO,
+                "job_id": _NUMBER,
+                "attempt": _NUMBER,
+            },
+            ["owner", "repo", "job_id"],
+        ),
+        output_schema=_ACTION_LOG_SCHEMA,
+    ),
+    ToolSpec(
+        name="forgejo_get_action_run_logs",
+        title="Get action run logs",
+        description="Return bounded plaintext files extracted from an action run log archive.",
+        risk="read-sensitive",
+        input_schema=_object_schema(
+            {"owner": _OWNER, "repo": _REPO, "run_id": _NUMBER},
+            ["owner", "repo", "run_id"],
+        ),
+        output_schema=_object_schema(
+            {
+                "run_id": _NUMBER,
+                "size": {"type": "integer", "minimum": 0},
+                "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+                "files": {
+                    "type": "array",
+                    "items": _ACTION_LOG_FILE_SCHEMA,
+                    "maxItems": 100,
+                },
+                "files_truncated": {"type": "boolean"},
+            },
+            ["run_id", "size", "sha256", "files", "files_truncated"],
+        ),
+    ),
+    ToolSpec(
+        name="forgejo_list_action_run_artifacts",
+        title="List action run artifacts",
+        description="List metadata for artifacts produced by an action run.",
+        risk="read",
+        input_schema=_object_schema(
+            {
+                "owner": _OWNER,
+                "repo": _REPO,
+                "run_id": _NUMBER,
+                "name": _REF,
+                "page": _PAGE,
+                "limit": _LIMIT,
+            },
+            ["owner", "repo", "run_id"],
+        ),
+        output_schema=_page_schema(_ACTION_ARTIFACT_SCHEMA),
+    ),
+    ToolSpec(
+        name="forgejo_cancel_action_run",
+        title="Cancel action run",
+        description="Cancel a pending or running repository action run.",
+        risk="write",
+        input_schema=_object_schema(
+            {"owner": _OWNER, "repo": _REPO, "run_id": _NUMBER},
+            ["owner", "repo", "run_id"],
+        ),
+        output_schema=_object_schema(
+            {"cancelled": {"const": True}, "audit_event_id": _AUDIT},
+            ["cancelled", "audit_event_id"],
+        ),
+    ),
+    ToolSpec(
+        name="forgejo_delete_action_run",
+        title="Delete action run",
+        description="Permanently delete a completed repository action run.",
+        risk="write",
+        input_schema=_object_schema(
+            {"owner": _OWNER, "repo": _REPO, "run_id": _NUMBER},
+            ["owner", "repo", "run_id"],
+        ),
+        output_schema=_object_schema(
+            {"deleted": {"const": True}, "audit_event_id": _AUDIT},
+            ["deleted", "audit_event_id"],
         ),
     ),
     ToolSpec(

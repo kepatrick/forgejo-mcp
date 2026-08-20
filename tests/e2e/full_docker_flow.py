@@ -369,8 +369,12 @@ def run_mcp_flow(mcp_tokens: dict[str, str]) -> None:
                     "path": ".forgejo/workflows/ci.yml",
                     "content": (
                         "name: CI\non:\n  workflow_dispatch:\n"
+                        "    inputs:\n      delay:\n        required: false\n"
+                        "        default: '0'\n"
                         "jobs:\n  test:\n    runs-on: docker\n"
-                        "    steps:\n      - run: echo ok\n"
+                        "    steps:\n      - name: Produce result\n        run: |\n"
+                        "          sleep '${{ inputs.delay }}'\n"
+                        "          echo ok | tee result.txt\n"
                     ),
                 },
             ],
@@ -569,6 +573,19 @@ def run_mcp_flow(mcp_tokens: dict[str, str]) -> None:
         {**repository, "ref": feature["commit_sha"]},
     )
     assert status["state"] in {"pending", "success", "failure", "error", "warning"}
+
+    # Forgejo calculates PR mergeability asynchronously. A merge attempted while
+    # that check is pending returns HTTP 405 ("Please try again later").
+    for _ in range(30):
+        merge_candidate = developer.call(
+            "forgejo_get_pull_request", {**repository, "number": pull["number"]}
+        )
+        if merge_candidate["mergeable"] is True:
+            break
+        time.sleep(1)
+    else:
+        raise RuntimeError("pull request did not become mergeable within 30 seconds")
+
     developer.call(
         "forgejo_merge_pull_request",
         {
@@ -590,8 +607,96 @@ def run_mcp_flow(mcp_tokens: dict[str, str]) -> None:
     assert merged_status == {"number": pull["number"], "merged": True}
     developer.call(
         "forgejo_dispatch_workflow",
-        {**repository, "workflow": "ci.yml", "ref": "main", "inputs": {}},
+        {
+            **repository,
+            "workflow": "ci.yml",
+            "ref": "main",
+            "inputs": {"delay": "0"},
+        },
     )
+    completed_run: dict[str, Any] | None = None
+    for _ in range(120):
+        action_runs = developer.call(
+            "forgejo_list_action_runs",
+            {
+                **repository,
+                "event": ["workflow_dispatch"],
+                "workflow_id": "ci.yml",
+                "limit": 30,
+            },
+        )
+        if action_runs["items"]:
+            candidate = action_runs["items"][0]
+            if candidate["status"] == "success":
+                completed_run = candidate
+                break
+            if candidate["status"] in {"failure", "cancelled", "skipped", "blocked"}:
+                raise RuntimeError(f"action run ended with unexpected status {candidate['status']}")
+        time.sleep(1)
+    if completed_run is None:
+        raise RuntimeError("action run did not complete within 120 seconds")
+
+    run_id = completed_run["id"]
+    loaded_run = developer.call("forgejo_get_action_run", {**repository, "run_id": run_id})
+    assert loaded_run["status"] == "success"
+    jobs = developer.call("forgejo_list_action_run_jobs", {**repository, "run_id": run_id})
+    assert len(jobs["items"]) == 1
+    job = jobs["items"][0]
+    assert job["status"] == "success"
+    job_log = developer.call(
+        "forgejo_get_action_job_log",
+        {
+            **repository,
+            "job_id": job["id"],
+            "attempt": job["attempt"],
+        },
+    )
+    assert "ok" in job_log["content"]
+    run_logs = developer.call("forgejo_get_action_run_logs", {**repository, "run_id": run_id})
+    assert run_logs["files"]
+    artifacts = developer.call(
+        "forgejo_list_action_run_artifacts",
+        {**repository, "run_id": run_id, "limit": 30},
+    )
+    assert artifacts["items"] == []
+
+    developer.call(
+        "forgejo_dispatch_workflow",
+        {
+            **repository,
+            "workflow": "ci.yml",
+            "ref": "main",
+            "inputs": {"delay": "60"},
+        },
+    )
+    cancellable_run: dict[str, Any] | None = None
+    for _ in range(30):
+        action_runs = developer.call(
+            "forgejo_list_action_runs",
+            {**repository, "event": ["workflow_dispatch"], "limit": 30},
+        )
+        cancellable_run = next(
+            (item for item in action_runs["items"] if item["id"] != run_id), None
+        )
+        if cancellable_run is not None:
+            break
+        time.sleep(1)
+    if cancellable_run is None:
+        raise RuntimeError("second action run did not appear within 30 seconds")
+    cancelled_run_id = cancellable_run["id"]
+    developer.call("forgejo_cancel_action_run", {**repository, "run_id": cancelled_run_id})
+    for _ in range(30):
+        cancelled_run = developer.call(
+            "forgejo_get_action_run", {**repository, "run_id": cancelled_run_id}
+        )
+        if cancelled_run["status"] == "cancelled":
+            break
+        time.sleep(1)
+    else:
+        raise RuntimeError("action run did not become cancelled within 30 seconds")
+    developer.call("forgejo_delete_action_run", {**repository, "run_id": cancelled_run_id})
+    print("PASS MCP Actions runs, jobs, logs, artifacts, cancellation, and deletion")
+
     tag = developer.call(
         "forgejo_create_tag",
         {

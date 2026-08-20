@@ -89,7 +89,25 @@ services:
       - "${FORGEJO_TEST_HTTP_PORT:-3000}:3000"
     restart: unless-stopped
 
+  runner:
+    image: data.forgejo.org/forgejo/runner:13
+    profiles: ["test-runner"]
+    user: "0:0"
+    working_dir: /data
+    environment:
+      DOCKER_HOST: unix:///var/run/docker.sock
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - runner-data:/data
+      - ${FMCP_RUNNER_CONFIG_FILE:-./secrets/runner-config.yml}:/data/runner-config.yml:ro
+    command: forgejo-runner daemon --config /data/runner-config.yml
+    restart: unless-stopped
+    depends_on:
+      forgejo:
+        condition: service_started
+
 volumes:
   postgres-data:
   forgejo-data:
   forgejo-config:
+  runner-data:

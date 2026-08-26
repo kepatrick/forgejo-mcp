@@ -685,9 +685,7 @@ _TOOL_SPECS = (
         title="Sync pull mirror",
         description="Queue an immediate synchronization of a pull-mirror repository.",
         risk="write",
-        input_schema=_object_schema(
-            {"owner": _OWNER, "repo": _REPO}, ["owner", "repo"]
-        ),
+        input_schema=_object_schema({"owner": _OWNER, "repo": _REPO}, ["owner", "repo"]),
         output_schema=_object_schema(
             {"synced": {"const": True}, "audit_event_id": _AUDIT},
             ["synced", "audit_event_id"],

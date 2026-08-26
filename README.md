@@ -140,7 +140,7 @@ npm run typecheck --prefix frontend
 npm run build --prefix frontend
 ```
 
-Forgejo is pinned to `codeberg.org/forgejo/forgejo:16.0.2-rootless`. Verify another instance's Swagger contract with:
+Forgejo is pinned to the official mirror `data.forgejo.org/forgejo/forgejo:16.0.2-rootless`. Verify another instance's Swagger contract with:
 
 ```bash
 uv run python scripts/verify_forgejo_openapi.py https://forgejo.example/swagger.v1.json

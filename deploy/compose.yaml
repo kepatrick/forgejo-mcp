@@ -73,7 +73,7 @@ services:
       retries: 10
 
   forgejo:
-    image: codeberg.org/forgejo/forgejo:16.0.2-rootless
+    image: data.forgejo.org/forgejo/forgejo:16.0.2-rootless
     profiles: ["test-forgejo"]
     user: "1000:1000"
     environment:
@@ -82,6 +82,8 @@ services:
       FORGEJO__security__INSTALL_LOCK: "true"
       FORGEJO__server__ROOT_URL: http://localhost:3000/
       FORGEJO__server__DISABLE_SSH: "true"
+      # Test-only: the E2E migration source is another repository on this container.
+      FORGEJO__migrations__ALLOW_LOCALNETWORKS: "true"
     volumes:
       - forgejo-data:/var/lib/gitea
       - forgejo-config:/etc/gitea

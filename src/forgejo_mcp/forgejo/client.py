@@ -2038,9 +2038,7 @@ def _copy_repository_options(
                 },
             )
         elif key == "external_wiki":
-            destination[key] = _nested_string_options(
-                value, key, {"external_wiki_url": 2048}
-            )
+            destination[key] = _nested_string_options(value, key, {"external_wiki_url": 2048})
         elif key == "internal_tracker":
             destination[key] = _nested_boolean_options(
                 value,

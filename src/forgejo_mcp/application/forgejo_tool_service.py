@@ -76,17 +76,13 @@ class ForgejoToolService:
             await self._call(user_id, "create_organization_repository", **kwargs),
         )
 
-    async def migrate_repository(
-        self, user_id: uuid.UUID, **kwargs: Any
-    ) -> RepositorySummary:
+    async def migrate_repository(self, user_id: uuid.UUID, **kwargs: Any) -> RepositorySummary:
         return cast(
             RepositorySummary,
             await self._call(user_id, "migrate_repository", **kwargs),
         )
 
-    async def update_repository(
-        self, user_id: uuid.UUID, **kwargs: Any
-    ) -> RepositorySummary:
+    async def update_repository(self, user_id: uuid.UUID, **kwargs: Any) -> RepositorySummary:
         return cast(
             RepositorySummary,
             await self._call(user_id, "update_repository", **kwargs),

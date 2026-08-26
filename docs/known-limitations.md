@@ -6,7 +6,7 @@ v0.1.0 is the initial open-source release. It provides the complete Forgejo deve
 
 ## Compatibility
 
-- The API contract is locked to Forgejo `16.0.2+gitea-1.22.0` and the image `codeberg.org/forgejo/forgejo:16.0.2-rootless`.
+- The API contract is locked to Forgejo `16.0.2+gitea-1.22.0` and the official mirror image `data.forgejo.org/forgejo/forgejo:16.0.2-rootless`.
 - Other Forgejo versions may work, but must be checked with `scripts/verify_forgejo_openapi.py` and the local integration suite before use.
 - The server supports MCP Streamable HTTP with Bearer authentication. Client-specific configuration examples are not yet validated for every MCP client.
 

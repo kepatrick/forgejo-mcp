@@ -355,9 +355,12 @@ def run_mcp_flow(mcp_tokens: dict[str, str]) -> None:
         },
     )["repository"]
     assert updated_mirror["description"] == "Updated through Forgejo MCP"
-    assert developer.call(
-        "forgejo_sync_mirror", {"owner": "full-workflow-org", "repo": "mcp-mirror"}
-    )["synced"] is True
+    assert (
+        developer.call("forgejo_sync_mirror", {"owner": "full-workflow-org", "repo": "mcp-mirror"})[
+            "synced"
+        ]
+        is True
+    )
     repositories = developer.call("forgejo_list_repositories", {"limit": 100})
     assert any(item["full_name"] == "developer/full-workflow" for item in repositories["items"])
     repository_metadata = developer.call("forgejo_get_repository", repository)

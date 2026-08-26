@@ -140,7 +140,7 @@ npm run typecheck --prefix frontend
 npm run build --prefix frontend
 ```
 
-Forgejo image 固定為 `codeberg.org/forgejo/forgejo:16.0.2-rootless`。可以使用下列指令驗證其他 instance 的 Swagger contract：
+Forgejo image 固定為官方 mirror `data.forgejo.org/forgejo/forgejo:16.0.2-rootless`。可以使用下列指令驗證其他 instance 的 Swagger contract：
 
 ```bash
 uv run python scripts/verify_forgejo_openapi.py https://forgejo.example/swagger.v1.json

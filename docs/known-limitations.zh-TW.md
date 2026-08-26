@@ -6,7 +6,7 @@ v0.1.0 是第一個開源版本，已提供完整 Forgejo 開發流程與核心�
 
 ## 相容性
 
-- API contract 固定為 Forgejo `16.0.2+gitea-1.22.0`，image 固定為 `codeberg.org/forgejo/forgejo:16.0.2-rootless`。
+- API contract 固定為 Forgejo `16.0.2+gitea-1.22.0`，image 固定為官方 mirror `data.forgejo.org/forgejo/forgejo:16.0.2-rootless`。
 - 其他 Forgejo 版本可能可以運作，但使用前必須執行 `scripts/verify_forgejo_openapi.py` 與本地 integration suite。
 - Server 支援使用 Bearer authentication 的 MCP Streamable HTTP，但尚未驗證所有 MCP clients 的專屬設定格式。
 

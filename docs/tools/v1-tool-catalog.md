@@ -2,11 +2,11 @@
 
 本文件是 Forgejo MCP **v1.0 工具功能、公開名稱及 schema 邊界的規範文件**。實作、測試、Dashboard 權限顯示與相容性判斷均以本文件為準。
 
-> 狀態：47 個 v1 工具已實作。公開 tool name 與已發布 schema 視為 SemVer public API。
+> 狀態：50 個 v1 工具已實作。公開 tool name 與已發布 schema 視為 SemVer public API。
 
 ## 1. v1 範圍
 
-v1 提供 30 個唯讀工具及 17 個寫入工具，共 47 個。平台不提供任意 HTTP request、任意 URL 或通用 Forgejo API proxy；每個工具都必須對應 Forgejo v16-compatible OpenAPI endpoint。
+v1 提供 30 個唯讀工具及 20 個寫入工具，共 50 個。平台不提供任意 HTTP request、任意 URL 或通用 Forgejo API proxy；每個工具都必須對應 Forgejo v16-compatible OpenAPI endpoint。
 
 | 批次 | 功能 | Tools | 狀態 |
 |---|---|---:|---|
@@ -244,6 +244,32 @@ merged_at: datetime | null
 - **Input:** required `organization`、`name`；optional `description`、`private`（default `false`）、`auto_init`（default `false`）、`default_branch`。
 - **Output:** `repository: RepositorySummary` 與 `audit_event_id`。
 - 不建立組織、不修改組織權限，亦不允許覆寫 Forgejo base URL。組織名稱會作為單一 path segment 驗證與編碼；repository 名稱、描述與 default branch 皆有長度及控制字元限制。
+
+### 4.3b `forgejo_migrate_repository`
+
+- **Risk:** `write`
+- **Forgejo:** `POST /api/v1/repos/migrate`
+- **預期最小 scope:** 能在指定 owner 下建立 repository，且能讀取 migration source；實際授權與 migration policy 由 Forgejo 驗證。
+- **Input:** required `clone_addr`、`repo_name`；optional `repo_owner`、`description`、`auth_username`、`auth_password`、`auth_token`、`service`、`mirror`、`mirror_interval`、`private`、`lfs`、`lfs_endpoint`、`issues`、`labels`、`milestones`、`pull_requests`、`releases`、`wiki`。
+- **Output:** `repository: RepositorySummary` 與 `audit_event_id`。
+- 設定 `mirror=true` 可一次建立 pull mirror，`mirror_interval` 使用 Forgejo duration（例如 `8h0m0s`），實際最短週期由 Forgejo instance policy 決定。`clone_addr` 禁止內嵌 credential，必須改用獨立 authentication fields；password/token 會在 audit persistence 前遞迴遮蔽。
+
+### 4.3c `forgejo_update_repository`
+
+- **Risk:** `write`
+- **Forgejo:** `PATCH /api/v1/repos/{owner}/{repo}`
+- **預期最小 scope:** repository administration/write 權限。
+- **Input:** required `owner`、`repo`，另至少一個 Forgejo v16 `EditRepoOption` setting。支援 visibility、名稱、description、website、default branch、merge/update policy、repository units、archive/template、tracker/wiki，以及 mirror 的 `mirror_interval` 與 `enable_prune`。
+- **Output:** `repository: RepositorySummary` 與 `audit_event_id`。
+- 只傳入已明確提供的 settings；未提供欄位不會被覆寫。
+
+### 4.3d `forgejo_sync_mirror`
+
+- **Risk:** `write`
+- **Forgejo:** `POST /api/v1/repos/{owner}/{repo}/mirror-sync`
+- **預期最小 scope:** pull-mirror repository administration/write 權限。
+- **Input:** `owner`、`repo`。
+- **Output:** `synced: true` 與 `audit_event_id`。此結果代表 Forgejo 已接受同步要求，不保證 remote fetch 已完成。
 
 ### 4.4 `forgejo_get_file_content`
 
@@ -521,7 +547,7 @@ Run 與 artifact 清單皆有界；job 清單最多回傳 100 筆。Job log 最�
 v1 不實作也不在 registry 中預留以下工具：
 
 - Delete repository、branch、tag、issue、PR、release 或 comment。
-- Update/delete repository；建立 repository 僅限既有組織，且只能透過 `forgejo_create_organization_repository`。
+- Delete repository；建立一般 repository 僅限既有組織，pull mirror 則透過 `forgejo_migrate_repository` 建立。
 - Protected branch、collaborator、team、organization 權限管理。
 - Webhook、deploy key、GPG key、OAuth application 管理。
 - Actions rerun，以及 runner、package、secret 或 variable 管理。
@@ -556,7 +582,7 @@ v1 不實作也不在 registry 中預留以下工具：
 
 最低支援版本鎖定為 Forgejo `16.0.2+gitea-1.22.0`，測試 image 固定使用 `codeberg.org/forgejo/forgejo:16.0.2-rootless`。
 
-- `tests/contracts/forgejo-v16-openapi.json` 保存 47 個 MCP tools 對應的 method、path、operation ID，以及完整 `/swagger.v1.json` SHA-256。
+- `tests/contracts/forgejo-v16-openapi.json` 保存 50 個 MCP tools 對應的 method、path、operation ID，以及完整 `/swagger.v1.json` SHA-256。
 - `scripts/verify_forgejo_openapi.py` 驗證實際 instance 的版本、checksum、registry 完整性與每個 operation。
 - `scripts/test-full-docker-e2e.sh` 在每次 CI 以 pinned image 執行 contract verification 及完整 MCP development flow。
 - 正式發布前仍須加入最低與最新支援版本的 integration matrix。

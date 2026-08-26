@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 
@@ -222,6 +224,108 @@ async def test_create_organization_repository_validates_input() -> None:
             private=False,
             auto_init=False,
             default_branch=None,
+        )
+
+
+async def test_repository_migration_update_and_mirror_sync() -> None:
+    requests: list[tuple[str, str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content) if request.content else None
+        requests.append((request.method, request.url.path, body))
+        if request.url.path == "/api/v1/repos/migrate":
+            payload = repository_payload()
+            payload.update({"name": "checkout", "full_name": "actions/checkout"})
+            return httpx.Response(201, json=payload)
+        if request.url.path == "/api/v1/repos/actions/checkout":
+            return httpx.Response(200, json=repository_payload())
+        if request.url.path == "/api/v1/repos/actions/checkout/mirror-sync":
+            return httpx.Response(200)
+        raise AssertionError(f"unexpected request: {request.method} {request.url.path}")
+
+    client = ForgejoClient(connect_timeout_seconds=2, transport=httpx.MockTransport(handler))
+    migrated = await client.migrate_repository(
+        base_url="https://git.example.test",
+        token="pat",
+        verify_tls=True,
+        clone_addr="https://github.com/actions/checkout.git",
+        repo_name="checkout",
+        repo_owner="actions",
+        mirror=True,
+        mirror_interval="8h0m0s",
+        auth_token="upstream-token",
+    )
+    updated = await client.update_repository(
+        base_url="https://git.example.test",
+        token="pat",
+        verify_tls=True,
+        owner="actions",
+        repo="checkout",
+        mirror_interval="12h0m0s",
+        enable_prune=True,
+        has_actions=True,
+        default_merge_style="fast-forward-only",
+        external_wiki={"external_wiki_url": "https://example.test/wiki"},
+    )
+    await client.sync_mirror(
+        base_url="https://git.example.test",
+        token="pat",
+        verify_tls=True,
+        owner="actions",
+        repo="checkout",
+    )
+
+    assert migrated.full_name == "actions/checkout"
+    assert updated.id == 7
+    assert requests == [
+        (
+            "POST",
+            "/api/v1/repos/migrate",
+            {
+                "clone_addr": "https://github.com/actions/checkout.git",
+                "repo_name": "checkout",
+                "repo_owner": "actions",
+                "mirror": True,
+                "mirror_interval": "8h0m0s",
+                "auth_token": "upstream-token",
+            },
+        ),
+        (
+            "PATCH",
+            "/api/v1/repos/actions/checkout",
+            {
+                "mirror_interval": "12h0m0s",
+                "enable_prune": True,
+                "has_actions": True,
+                "default_merge_style": "fast-forward-only",
+                "external_wiki": {"external_wiki_url": "https://example.test/wiki"},
+            },
+        ),
+        ("POST", "/api/v1/repos/actions/checkout/mirror-sync", None),
+    ]
+
+
+async def test_repository_migration_and_update_validate_sensitive_options() -> None:
+    client = ForgejoClient(
+        connect_timeout_seconds=2,
+        transport=httpx.MockTransport(lambda _request: httpx.Response(500)),
+    )
+
+    with pytest.raises(ValidationFailed, match="must not contain credentials"):
+        await client.migrate_repository(
+            base_url="https://git.example.test",
+            token="pat",
+            verify_tls=True,
+            clone_addr="https://user:secret@example.test/repo.git",
+            repo_name="repo",
+        )
+    with pytest.raises(ValidationFailed, match="at least one setting"):
+        await client.update_repository(
+            base_url="https://git.example.test",
+            token="pat",
+            verify_tls=True,
+            owner="actions",
+            repo="checkout",
         )
 
 

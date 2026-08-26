@@ -26,6 +26,9 @@ def test_registry_contains_stable_default_disabled_tool_spec() -> None:
         "forgejo_list_repositories",
         "forgejo_get_repository",
         "forgejo_create_organization_repository",
+        "forgejo_migrate_repository",
+        "forgejo_update_repository",
+        "forgejo_sync_mirror",
         "forgejo_list_branches",
         "forgejo_list_commits",
         "forgejo_get_commit",
@@ -74,6 +77,9 @@ def test_registry_contains_stable_default_disabled_tool_spec() -> None:
     assert tools[0].risk == "read"
     assert tools[0].input_schema["additionalProperties"] is False
     assert all(tool.output_schema["additionalProperties"] is False for tool in tools)
+    assert get_tool("forgejo_update_repository").input_schema["minProperties"] == 3
+    assert get_tool("forgejo_migrate_repository").risk == "write"
+    assert get_tool("forgejo_sync_mirror").risk == "write"
     for tool in tools:
         jsonschema.Draft202012Validator.check_schema(tool.input_schema)
         jsonschema.Draft202012Validator.check_schema(tool.output_schema)

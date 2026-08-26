@@ -333,6 +333,31 @@ def run_mcp_flow(mcp_tokens: dict[str, str]) -> None:
     )["repository"]
     assert organization_repository["full_name"] == "full-workflow-org/mcp-created"
     assert organization_repository["default_branch"] == "main"
+    mirror_repository = developer.call(
+        "forgejo_migrate_repository",
+        {
+            "clone_addr": "http://forgejo:3000/developer/full-workflow.git",
+            "repo_owner": "full-workflow-org",
+            "repo_name": "mcp-mirror",
+            "mirror": True,
+            "mirror_interval": "8h0m0s",
+        },
+    )["repository"]
+    assert mirror_repository["full_name"] == "full-workflow-org/mcp-mirror"
+    updated_mirror = developer.call(
+        "forgejo_update_repository",
+        {
+            "owner": "full-workflow-org",
+            "repo": "mcp-mirror",
+            "description": "Updated through Forgejo MCP",
+            "mirror_interval": "12h0m0s",
+            "enable_prune": True,
+        },
+    )["repository"]
+    assert updated_mirror["description"] == "Updated through Forgejo MCP"
+    assert developer.call(
+        "forgejo_sync_mirror", {"owner": "full-workflow-org", "repo": "mcp-mirror"}
+    )["synced"] is True
     repositories = developer.call("forgejo_list_repositories", {"limit": 100})
     assert any(item["full_name"] == "developer/full-workflow" for item in repositories["items"])
     repository_metadata = developer.call("forgejo_get_repository", repository)

@@ -27,6 +27,26 @@ def test_redaction_is_recursive_case_insensitive_and_pre_persistence() -> None:
     assert result.truncated is False
 
 
+def test_migration_credentials_are_redacted_but_upstream_remains_auditable() -> None:
+    result = redact_arguments(
+        {
+            "clone_addr": "https://github.com/actions/checkout.git",
+            "auth_username": "mirror-bot",
+            "auth_password": "password-value",
+            "auth_token": "token-value",
+        }
+    )
+
+    assert result.value == {
+        "clone_addr": "https://github.com/actions/checkout.git",
+        "auth_username": "mirror-bot",
+        "auth_password": "[REDACTED]",
+        "auth_token": "[REDACTED]",
+    }
+    assert "password-value" not in repr(result.value)
+    assert "token-value" not in repr(result.value)
+
+
 def test_redaction_truncates_large_text_and_extracts_safe_target() -> None:
     arguments = {
         "owner": "patrick",

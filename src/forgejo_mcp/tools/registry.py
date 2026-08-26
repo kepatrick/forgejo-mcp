@@ -461,6 +461,99 @@ _ACTION_LOG_FILE_SCHEMA = _object_schema(
     ["name", "size", "sha256", "content", "truncated"],
 )
 
+_MIGRATION_BOOLEAN = {"type": "boolean"}
+_MIRROR_INTERVAL = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 64,
+    "description": "Forgejo duration such as 8h30m0s; the instance enforces its minimum interval.",
+}
+_EXTERNAL_TRACKER_SCHEMA = _object_schema(
+    {
+        "external_tracker_format": {"type": "string", "maxLength": 2048},
+        "external_tracker_regexp_pattern": {"type": "string", "maxLength": 1024},
+        "external_tracker_style": {
+            "type": "string",
+            "enum": ["numeric", "alphanumeric", "regexp"],
+        },
+        "external_tracker_url": {"type": "string", "maxLength": 2048},
+    },
+    [],
+)
+_EXTERNAL_TRACKER_SCHEMA["minProperties"] = 1
+_EXTERNAL_WIKI_SCHEMA = _object_schema(
+    {"external_wiki_url": {"type": "string", "maxLength": 2048}}, []
+)
+_EXTERNAL_WIKI_SCHEMA["minProperties"] = 1
+_INTERNAL_TRACKER_SCHEMA = _object_schema(
+    {
+        "allow_only_contributors_to_track_time": {"type": "boolean"},
+        "enable_issue_dependencies": {"type": "boolean"},
+        "enable_time_tracker": {"type": "boolean"},
+    },
+    [],
+)
+_INTERNAL_TRACKER_SCHEMA["minProperties"] = 1
+
+
+def _repository_update_input_schema() -> dict[str, Any]:
+    boolean_fields = (
+        "allow_fast_forward_only_merge",
+        "allow_manual_merge",
+        "allow_merge_commits",
+        "allow_rebase",
+        "allow_rebase_explicit",
+        "allow_rebase_update",
+        "allow_squash_merge",
+        "archived",
+        "autodetect_manual_merge",
+        "default_allow_maintainer_edit",
+        "default_delete_branch_after_merge",
+        "enable_prune",
+        "globally_editable_wiki",
+        "has_actions",
+        "has_issues",
+        "has_packages",
+        "has_projects",
+        "has_pull_requests",
+        "has_releases",
+        "has_wiki",
+        "ignore_whitespace_conflicts",
+        "private",
+        "template",
+    )
+    properties: dict[str, Any] = {
+        "owner": _OWNER,
+        "repo": _REPO,
+        **{field: {"type": "boolean"} for field in boolean_fields},
+        "default_branch": _REF,
+        "default_merge_style": {
+            "type": "string",
+            "enum": [
+                "merge",
+                "rebase",
+                "rebase-merge",
+                "squash",
+                "fast-forward-only",
+                "manually-merged",
+                "rebase-update-only",
+            ],
+        },
+        "default_update_style": {"type": "string", "enum": ["rebase", "merge"]},
+        "description": {"type": "string", "maxLength": 2048},
+        "external_tracker": _EXTERNAL_TRACKER_SCHEMA,
+        "external_wiki": _EXTERNAL_WIKI_SCHEMA,
+        "internal_tracker": _INTERNAL_TRACKER_SCHEMA,
+        "mirror_interval": _MIRROR_INTERVAL,
+        "name": _REPO,
+        "website": {"type": "string", "maxLength": 2048},
+        "wiki_branch": _REF,
+    }
+    schema = _object_schema(properties, ["owner", "repo"])
+    schema["minProperties"] = 3
+    return schema
+
+
 _TOOL_SPECS = (
     ToolSpec(
         name="forgejo_get_current_user",
@@ -534,6 +627,70 @@ _TOOL_SPECS = (
         output_schema=_object_schema(
             {"repository": _repository_schema(), "audit_event_id": _AUDIT},
             ["repository", "audit_event_id"],
+        ),
+    ),
+    ToolSpec(
+        name="forgejo_migrate_repository",
+        title="Migrate repository",
+        description=(
+            "Migrate a remote repository, optionally creating it as a pull mirror. "
+            "Credentials are redacted from invocation audit records."
+        ),
+        risk="write",
+        input_schema=_object_schema(
+            {
+                "clone_addr": {"type": "string", "minLength": 1, "maxLength": 2048},
+                "repo_name": _REPO,
+                "repo_owner": _OWNER,
+                "description": {"type": "string", "maxLength": 2048},
+                "auth_username": {"type": "string", "minLength": 1, "maxLength": 255},
+                "auth_password": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "auth_token": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "service": {"type": "string", "minLength": 1, "maxLength": 255},
+                "mirror": _MIGRATION_BOOLEAN,
+                "mirror_interval": _MIRROR_INTERVAL,
+                "private": _MIGRATION_BOOLEAN,
+                "lfs": _MIGRATION_BOOLEAN,
+                "lfs_endpoint": {"type": "string", "maxLength": 2048},
+                "issues": _MIGRATION_BOOLEAN,
+                "labels": _MIGRATION_BOOLEAN,
+                "milestones": _MIGRATION_BOOLEAN,
+                "pull_requests": _MIGRATION_BOOLEAN,
+                "releases": _MIGRATION_BOOLEAN,
+                "wiki": _MIGRATION_BOOLEAN,
+            },
+            ["clone_addr", "repo_name"],
+        ),
+        output_schema=_object_schema(
+            {"repository": _repository_schema(), "audit_event_id": _AUDIT},
+            ["repository", "audit_event_id"],
+        ),
+    ),
+    ToolSpec(
+        name="forgejo_update_repository",
+        title="Update repository",
+        description=(
+            "Update repository settings, including pull-mirror interval and prune behavior. "
+            "At least one setting must be supplied."
+        ),
+        risk="write",
+        input_schema=_repository_update_input_schema(),
+        output_schema=_object_schema(
+            {"repository": _repository_schema(), "audit_event_id": _AUDIT},
+            ["repository", "audit_event_id"],
+        ),
+    ),
+    ToolSpec(
+        name="forgejo_sync_mirror",
+        title="Sync pull mirror",
+        description="Queue an immediate synchronization of a pull-mirror repository.",
+        risk="write",
+        input_schema=_object_schema(
+            {"owner": _OWNER, "repo": _REPO}, ["owner", "repo"]
+        ),
+        output_schema=_object_schema(
+            {"synced": {"const": True}, "audit_event_id": _AUDIT},
+            ["synced", "audit_event_id"],
         ),
     ),
     ToolSpec(

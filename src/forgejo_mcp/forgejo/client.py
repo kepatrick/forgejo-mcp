@@ -252,6 +252,135 @@ class ForgejoClient:
         )
         return parse_repository(payload)
 
+    async def migrate_repository(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        verify_tls: bool,
+        clone_addr: str,
+        repo_name: str,
+        **options: Any,
+    ) -> RepositorySummary:
+        allowed_options = {
+            "auth_password",
+            "auth_token",
+            "auth_username",
+            "description",
+            "issues",
+            "labels",
+            "lfs",
+            "lfs_endpoint",
+            "milestones",
+            "mirror",
+            "mirror_interval",
+            "private",
+            "pull_requests",
+            "releases",
+            "repo_owner",
+            "service",
+            "wiki",
+        }
+        _reject_unknown_options(options, allowed_options, "repository migration")
+        data: dict[str, Any] = {
+            "clone_addr": _clone_address(clone_addr),
+            "repo_name": _repository_name(repo_name),
+        }
+        _copy_repository_options(data, options, migration=True)
+        payload = await self._write_json(
+            "POST",
+            f"{base_url}/api/v1/repos/migrate",
+            token,
+            verify_tls,
+            data,
+            "repository migration",
+            201,
+        )
+        return parse_repository(payload)
+
+    async def update_repository(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        verify_tls: bool,
+        owner: str,
+        repo: str,
+        **settings: Any,
+    ) -> RepositorySummary:
+        allowed_settings = {
+            "allow_fast_forward_only_merge",
+            "allow_manual_merge",
+            "allow_merge_commits",
+            "allow_rebase",
+            "allow_rebase_explicit",
+            "allow_rebase_update",
+            "allow_squash_merge",
+            "archived",
+            "autodetect_manual_merge",
+            "default_allow_maintainer_edit",
+            "default_branch",
+            "default_delete_branch_after_merge",
+            "default_merge_style",
+            "default_update_style",
+            "description",
+            "enable_prune",
+            "external_tracker",
+            "external_wiki",
+            "globally_editable_wiki",
+            "has_actions",
+            "has_issues",
+            "has_packages",
+            "has_projects",
+            "has_pull_requests",
+            "has_releases",
+            "has_wiki",
+            "ignore_whitespace_conflicts",
+            "internal_tracker",
+            "mirror_interval",
+            "name",
+            "private",
+            "template",
+            "website",
+            "wiki_branch",
+        }
+        _reject_unknown_options(settings, allowed_settings, "repository update")
+        if not settings:
+            raise ValidationFailed("repository update requires at least one setting")
+        data: dict[str, Any] = {}
+        _copy_repository_options(data, settings, migration=False)
+        payload = await self._write_json(
+            "PATCH",
+            self._repo_endpoint(base_url, owner, repo, "").rstrip("/"),
+            token,
+            verify_tls,
+            data,
+            "repository update",
+            200,
+        )
+        return parse_repository(payload)
+
+    async def sync_mirror(
+        self,
+        *,
+        base_url: str,
+        token: str,
+        verify_tls: bool,
+        owner: str,
+        repo: str,
+    ) -> None:
+        await self._request(
+            method="POST",
+            endpoint=self._repo_endpoint(base_url, owner, repo, "mirror-sync"),
+            token=token,
+            verify_tls=verify_tls,
+            params=None,
+            json_body=None,
+            resource="repository mirror sync",
+            expected_status=200,
+            accept="application/json",
+        )
+
     async def list_branches(
         self,
         *,
@@ -1810,6 +1939,180 @@ class ForgejoClient:
         ):
             raise ExternalServiceUnavailable("Forgejo returned an invalid user response")
         return ForgejoUser(id=user_id, username=username.strip())
+
+
+_REPOSITORY_BOOLEAN_OPTIONS = {
+    "allow_fast_forward_only_merge",
+    "allow_manual_merge",
+    "allow_merge_commits",
+    "allow_rebase",
+    "allow_rebase_explicit",
+    "allow_rebase_update",
+    "allow_squash_merge",
+    "archived",
+    "autodetect_manual_merge",
+    "default_allow_maintainer_edit",
+    "default_delete_branch_after_merge",
+    "enable_prune",
+    "globally_editable_wiki",
+    "has_actions",
+    "has_issues",
+    "has_packages",
+    "has_projects",
+    "has_pull_requests",
+    "has_releases",
+    "has_wiki",
+    "ignore_whitespace_conflicts",
+    "issues",
+    "labels",
+    "lfs",
+    "milestones",
+    "mirror",
+    "private",
+    "pull_requests",
+    "releases",
+    "template",
+    "wiki",
+}
+
+
+def _reject_unknown_options(options: dict[str, Any], allowed: set[str], resource: str) -> None:
+    unknown = sorted(set(options) - allowed)
+    if unknown:
+        raise ValidationFailed(f"{resource} contains unsupported options: {', '.join(unknown)}")
+
+
+def _copy_repository_options(
+    destination: dict[str, Any], options: dict[str, Any], *, migration: bool
+) -> None:
+    for key, value in options.items():
+        if value is None:
+            continue
+        if key in _REPOSITORY_BOOLEAN_OPTIONS:
+            if not isinstance(value, bool):
+                raise ValidationFailed(f"{key} must be a boolean")
+            destination[key] = value
+        elif key in {"name", "repo_owner"}:
+            if not isinstance(value, str):
+                raise ValidationFailed(f"{key} must be a string")
+            destination[key] = _repository_name(value, key.replace("_", " "))
+        elif key in {"default_branch", "wiki_branch"}:
+            if not isinstance(value, str):
+                raise ValidationFailed(f"{key} must be a string")
+            destination[key] = _ref_value(value, key.replace("_", " "))
+        elif key == "default_merge_style":
+            destination[key] = _option_value(
+                value,
+                key,
+                {
+                    "merge",
+                    "rebase",
+                    "rebase-merge",
+                    "squash",
+                    "fast-forward-only",
+                    "manually-merged",
+                    "rebase-update-only",
+                },
+            )
+        elif key == "default_update_style":
+            destination[key] = _option_value(value, key, {"merge", "rebase"})
+        elif key == "description":
+            destination[key] = _bounded_option_string(value, key, 2048, allow_empty=True)
+        elif key in {"auth_password", "auth_token"}:
+            destination[key] = _bounded_option_string(value, key, 4096)
+        elif key in {"auth_username", "service"}:
+            destination[key] = _bounded_option_string(value, key, 255)
+        elif key in {"mirror_interval"}:
+            destination[key] = _bounded_option_string(value, key, 64)
+        elif key in {"lfs_endpoint", "website"}:
+            destination[key] = _bounded_option_string(value, key, 2048, allow_empty=True)
+        elif key == "external_tracker":
+            destination[key] = _nested_string_options(
+                value,
+                key,
+                {
+                    "external_tracker_format": 2048,
+                    "external_tracker_regexp_pattern": 1024,
+                    "external_tracker_style": 32,
+                    "external_tracker_url": 2048,
+                },
+            )
+        elif key == "external_wiki":
+            destination[key] = _nested_string_options(
+                value, key, {"external_wiki_url": 2048}
+            )
+        elif key == "internal_tracker":
+            destination[key] = _nested_boolean_options(
+                value,
+                key,
+                {
+                    "allow_only_contributors_to_track_time",
+                    "enable_issue_dependencies",
+                    "enable_time_tracker",
+                },
+            )
+        else:
+            option_type = "migration" if migration else "repository"
+            raise ValidationFailed(f"unsupported {option_type} option")
+
+
+def _clone_address(value: str) -> str:
+    address = _bounded_option_string(value, "clone_addr", 2048)
+    if any(character.isspace() for character in address):
+        raise ValidationFailed("clone_addr is invalid")
+    if "://" in address:
+        try:
+            parsed = urlsplit(address)
+        except ValueError as error:
+            raise ValidationFailed("clone_addr is invalid") from error
+        if parsed.username is not None or parsed.password is not None:
+            raise ValidationFailed(
+                "clone_addr must not contain credentials; use auth_username and auth_password"
+            )
+    return address
+
+
+def _bounded_option_string(
+    value: Any, label: str, maximum: int, *, allow_empty: bool = False
+) -> str:
+    if not isinstance(value, str):
+        raise ValidationFailed(f"{label} must be a string")
+    if (
+        len(value) > maximum
+        or (not allow_empty and not value)
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
+        raise ValidationFailed(f"{label} is invalid")
+    return value
+
+
+def _option_value(value: Any, label: str, allowed: set[str]) -> str:
+    normalized = _bounded_option_string(value, label, 64)
+    if normalized not in allowed:
+        raise ValidationFailed(f"{label} is invalid")
+    return normalized
+
+
+def _nested_string_options(value: Any, label: str, fields: dict[str, int]) -> dict[str, str]:
+    if not isinstance(value, dict) or not value:
+        raise ValidationFailed(f"{label} must be a non-empty object")
+    _reject_unknown_options(value, set(fields), label)
+    return {
+        key: _bounded_option_string(child, key, fields[key], allow_empty=True)
+        for key, child in value.items()
+    }
+
+
+def _nested_boolean_options(value: Any, label: str, fields: set[str]) -> dict[str, bool]:
+    if not isinstance(value, dict) or not value:
+        raise ValidationFailed(f"{label} must be a non-empty object")
+    _reject_unknown_options(value, fields, label)
+    result: dict[str, bool] = {}
+    for key, child in value.items():
+        if not isinstance(child, bool):
+            raise ValidationFailed(f"{key} must be a boolean")
+        result[key] = child
+    return result
 
 
 def _retry_after_seconds(value: str | None) -> float:

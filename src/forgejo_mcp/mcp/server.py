@@ -274,6 +274,21 @@ async def _execute_tool(
             "repository": repository.model_dump(mode="json"),
             "audit_event_id": audit_event_id,
         }
+    if name == "forgejo_migrate_repository":
+        repository = await tools.migrate_repository(user_id, **arguments)
+        return {
+            "repository": repository.model_dump(mode="json"),
+            "audit_event_id": audit_event_id,
+        }
+    if name == "forgejo_update_repository":
+        repository = await tools.update_repository(user_id, **arguments)
+        return {
+            "repository": repository.model_dump(mode="json"),
+            "audit_event_id": audit_event_id,
+        }
+    if name == "forgejo_sync_mirror":
+        await tools.sync_mirror(user_id, **arguments)
+        return {"synced": True, "audit_event_id": audit_event_id}
     if name == "forgejo_list_branches":
         branch_page = await tools.list_branches(
             user_id,

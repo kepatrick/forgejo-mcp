@@ -35,8 +35,8 @@ v0.1.0 is the initial open-source release. It provides the complete Forgejo deve
 
 ## Tool scope
 
-- The catalog contains 47 workflow-oriented tools; it is not a one-to-one wrapper for every Forgejo API endpoint.
-- Repository creation is limited to existing organizations and remains subject to the stored PAT's Forgejo permissions.
+- The catalog contains 50 workflow-oriented tools; it is not a one-to-one wrapper for every Forgejo API endpoint.
+- Repository creation and migration target an existing user or organization and remain subject to the stored PAT's Forgejo permissions. Pull mirrors can be created, updated and manually synchronized; push-mirror management is not included.
 - Organization administration, repository deletion, user administration inside Forgejo, SSH key management, package administration and arbitrary API passthrough are intentionally excluded.
 - Workflow dispatch requires Forgejo Actions and an existing workflow file in the target repository.
 - Forgejo MCP authorization cannot grant repository access or PAT scopes that Forgejo itself denies.

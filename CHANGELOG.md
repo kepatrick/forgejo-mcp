@@ -63,3 +63,13 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Graceful invocation draining with durable audit completion, PostgreSQL pool disposal, and local Docker restart coverage.
 - Structured JSON request/invocation correlation plus Prometheus HTTP, MCP, Forgejo, rate-limit, and database-pool metrics.
 - Dependency-aware readiness that reports PostgreSQL and MCP acceptance state.
+- Pull-request CI matrix running the complete Docker E2E suite against Forgejo 16.0.2 and 16.0.3.
+- E2E coverage for repository search and repository webhook create/list operations.
+- Forgejo 16.0.3 compatibility report with complete Swagger, permission and security impact evidence.
+
+### Changed
+
+- Updated the development Forgejo image default from `16.0.2-rootless` to `16.0.3-rootless` while retaining a full 16.0.2 compatibility run.
+- Locked both official Swagger checksums and added a reproducible structural comparison; the only 16.0.3 API schema change marks `IssueMeta.index`, `IssueMeta.owner` and `IssueMeta.repo` as required, with no endpoint impact.
+- Replaced broad E2E Forgejo PATs with the explicit existing scope set (`read:user`, `write:organization`, `write:repository`, `write:issue`).
+- Made MCP `2025-06-18` negotiation explicit in integration and Docker E2E coverage.

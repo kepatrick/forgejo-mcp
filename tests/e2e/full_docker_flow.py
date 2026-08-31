@@ -6,7 +6,6 @@ import time
 from typing import Any
 
 import httpx
-from mcp.shared.version import LATEST_PROTOCOL_VERSION
 
 from forgejo_mcp.tools import list_tools
 
@@ -16,6 +15,13 @@ FORGEJO_INTERNAL_URL = os.getenv("FMCP_E2E_FORGEJO_INTERNAL_URL", "http://forgej
 ADMIN_PASSWORD = os.environ["FMCP_E2E_ADMIN_PASSWORD"]
 DEVELOPER_PASSWORD = os.environ["FMCP_E2E_DEVELOPER_PASSWORD"]
 REVIEWER_PASSWORD = os.environ["FMCP_E2E_REVIEWER_PASSWORD"]
+MCP_PROTOCOL_VERSION = "2025-06-18"
+FORGEJO_PAT_SCOPES = [
+    "read:user",
+    "write:organization",
+    "write:repository",
+    "write:issue",
+]
 
 
 def checked(response: httpx.Response, label: str) -> httpx.Response:
@@ -63,14 +69,14 @@ def create_forgejo_resources() -> dict[str, str]:
         method="POST",
         username="developer",
         password=DEVELOPER_PASSWORD,
-        body={"name": f"full-e2e-developer-{suffix}", "scopes": ["all"]},
+        body={"name": f"full-e2e-developer-{suffix}", "scopes": FORGEJO_PAT_SCOPES},
     )["sha1"]
     reviewer = forgejo_request(
         "/users/reviewer/tokens",
         method="POST",
         username="reviewer",
         password=REVIEWER_PASSWORD,
-        body={"name": f"full-e2e-reviewer-{suffix}", "scopes": ["all"]},
+        body={"name": f"full-e2e-reviewer-{suffix}", "scopes": FORGEJO_PAT_SCOPES},
     )["sha1"]
     forgejo_request(
         "/orgs",
@@ -84,7 +90,8 @@ def create_forgejo_resources() -> dict[str, str]:
     forgejo_request(
         "/user/repos",
         method="POST",
-        token=developer,
+        username="developer",
+        password=DEVELOPER_PASSWORD,
         body={
             "name": "full-workflow",
             "default_branch": "main",
@@ -110,7 +117,25 @@ def create_forgejo_resources() -> dict[str, str]:
         token=developer,
         body={"title": "v1", "description": "First release"},
     )
-    print("PASS Forgejo users, PATs, repository, collaborator, label, and milestone")
+    search = forgejo_request("/repos/search?q=full-workflow", token=developer)
+    assert any(item["full_name"] == "developer/full-workflow" for item in search["data"])
+    hook = forgejo_request(
+        "/repos/developer/full-workflow/hooks",
+        method="POST",
+        token=developer,
+        body={
+            "type": "forgejo",
+            "config": {
+                "url": "http://app:8000/health/live",
+                "content_type": "json",
+            },
+            "events": ["push"],
+            "active": True,
+        },
+    )
+    hooks = forgejo_request("/repos/developer/full-workflow/hooks", token=developer)
+    assert any(item["id"] == hook["id"] for item in hooks)
+    print("PASS Forgejo login, scoped PATs, repository setup, search, and repository webhooks")
     return {"developer": developer, "reviewer": reviewer}
 
 
@@ -255,7 +280,7 @@ class McpClient:
         }
         if self.session_id is not None:
             headers["MCP-Session-Id"] = self.session_id
-            headers["MCP-Protocol-Version"] = LATEST_PROTOCOL_VERSION
+            headers["MCP-Protocol-Version"] = MCP_PROTOCOL_VERSION
         return checked(self.client.post("/mcp", headers=headers, json=payload), "MCP request")
 
     def initialize(self) -> None:
@@ -266,12 +291,13 @@ class McpClient:
                 "id": self.request_id,
                 "method": "initialize",
                 "params": {
-                    "protocolVersion": LATEST_PROTOCOL_VERSION,
+                    "protocolVersion": MCP_PROTOCOL_VERSION,
                     "capabilities": {},
                     "clientInfo": {"name": "full-docker-e2e", "version": "1.0"},
                 },
             }
         )
+        assert response.json()["result"]["protocolVersion"] == MCP_PROTOCOL_VERSION
         self.session_id = response.headers["mcp-session-id"]
         self.request({"jsonrpc": "2.0", "method": "notifications/initialized"})
 

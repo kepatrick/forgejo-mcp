@@ -6,7 +6,7 @@ v0.1.0 is the initial open-source release. It provides the complete Forgejo deve
 
 ## Compatibility
 
-- The API contract is locked to Forgejo `16.0.2+gitea-1.22.0` and the official mirror image `data.forgejo.org/forgejo/forgejo:16.0.2-rootless`.
+- The API contract is locked to Forgejo `16.0.2+gitea-1.22.0` and `16.0.3+gitea-1.22.0`; the development default is the official `data.forgejo.org/forgejo/forgejo:16.0.3-rootless` image.
 - Other Forgejo versions may work, but must be checked with `scripts/verify_forgejo_openapi.py` and the local integration suite before use.
 - The server supports MCP Streamable HTTP with Bearer authentication. Client-specific configuration examples are not yet validated for every MCP client.
 
@@ -44,8 +44,8 @@ v0.1.0 is the initial open-source release. It provides the complete Forgejo deve
 ## Testing
 
 - Unit, integration and frontend quality checks are available.
-- The real App/PostgreSQL/Forgejo development-flow E2E runs locally with `scripts/test-full-docker-e2e.sh` and is not yet connected to workflow CI.
-- Failure-injection, security penetration testing, backup restore drills and multi-version Forgejo compatibility testing are deferred.
+- The real App/PostgreSQL/Forgejo development-flow E2E runs locally with `scripts/test-full-docker-e2e.sh` and in pull-request CI against both supported Forgejo releases.
+- Failure-injection, security penetration testing and backup restore drills are deferred.
 
 ## Security boundary
 

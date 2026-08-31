@@ -55,7 +55,7 @@ For normal deployments:
 
 HTTP is supported only for the local test profile when explicitly enabled.
 
-v0.1.0 is contract-tested against Forgejo `16.0.2+gitea-1.22.0`. See [Known limitations](known-limitations.md) before connecting another version.
+v0.1.0 is contract-tested against Forgejo `16.0.2+gitea-1.22.0` and `16.0.3+gitea-1.22.0`. See [Known limitations](known-limitations.md) before connecting another version.
 
 ## 3. Configure global tools
 

@@ -34,6 +34,7 @@ export FMCP_E2E_REVIEWER_PASSWORD="Reviewer-E2E-pass-123!"
 export FMCP_E2E_APP_URL="http://127.0.0.1:$FMCP_HTTP_PORT"
 export FMCP_E2E_FORGEJO_URL="http://127.0.0.1:$FORGEJO_TEST_HTTP_PORT"
 export FMCP_E2E_FORGEJO_INTERNAL_URL="http://forgejo:3000"
+export FORGEJO_IMAGE=${FORGEJO_IMAGE:-data.forgejo.org/forgejo/forgejo:16.0.3-rootless}
 
 printf '%s\n' "$FMCP_E2E_ADMIN_PASSWORD" > "$FMCP_ADMIN_PASSWORD_FILE"
 uv run python - <<PY
@@ -62,6 +63,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 compose up -d --build app postgres forgejo
+echo "Testing against $FORGEJO_IMAGE"
 
 ready=false
 for _ in $(seq 1 120); do

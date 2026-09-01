@@ -56,6 +56,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Security
 
+- Move the PostgreSQL password and application database URL from Docker environment variables to read-only secret files.
 - Pin production Forgejo base URLs out of band so Dashboard administration cannot redirect user PAT verification.
 - Reject unsafe repository migration URLs and private/special migration hosts by default.
 - Enforce an explicit browser `Origin` allowlist on the MCP endpoint and add no-store/CSP/browser hardening headers.

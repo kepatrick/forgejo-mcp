@@ -16,6 +16,10 @@ copy_secret() {
 
 copy_secret "${FMCP_BOOTSTRAP_ADMIN_PASSWORD_FILE:-/run/secrets/admin_password}" admin_password
 copy_secret "${FMCP_CREDENTIAL_ENCRYPTION_KEY_FILE:-/run/secrets/credential_key}" credential_key
+if [ -n "${FMCP_DATABASE_URL_FILE:-}" ]; then
+    copy_secret "$FMCP_DATABASE_URL_FILE" database_url
+    export FMCP_DATABASE_URL_FILE="$secret_dir/database_url"
+fi
 
 export FMCP_BOOTSTRAP_ADMIN_PASSWORD_FILE="$secret_dir/admin_password"
 export FMCP_CREDENTIAL_ENCRYPTION_KEY_FILE="$secret_dir/credential_key"

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from pathlib import Path
 
 import httpx
 import pytest
@@ -44,6 +45,32 @@ def test_production_requires_out_of_band_forgejo_url_allowlist() -> None:
     assert settings.forgejo_allowed_base_urls == ["https://git.example.test/forgejo"]
     assert settings.permits_forgejo_base_url("https://git.example.test/forgejo/")
     assert not settings.permits_forgejo_base_url("https://attacker.example")
+
+
+def test_database_url_file_overrides_environment_value(tmp_path: Path) -> None:
+    database_url_file = tmp_path / "database_url"
+    database_url_file.write_text(
+        "postgresql+asyncpg://app:file-secret@postgres/app\n",
+        encoding="utf-8",
+    )
+
+    settings = Settings(
+        environment="test",
+        database_url="postgresql+asyncpg://app:environment-secret@postgres/app",
+        database_url_file=database_url_file,
+    )
+
+    assert settings.database_url == "postgresql+asyncpg://app:file-secret@postgres/app"
+
+
+def test_database_url_file_must_be_readable_and_nonempty(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="unable to read"):
+        Settings(environment="test", database_url_file=tmp_path / "missing")
+
+    empty_file = tmp_path / "empty"
+    empty_file.write_text("\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="empty or too large"):
+        Settings(environment="test", database_url_file=empty_file)
 
 
 async def test_forgejo_instance_policy_rejects_untrusted_url_before_network() -> None:

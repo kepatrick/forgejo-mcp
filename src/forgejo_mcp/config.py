@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     environment: Literal["development", "test", "production"] = "development"
     database_url: str = "postgresql+asyncpg://forgejo_mcp:change-me@localhost:5432/forgejo_mcp"
+    database_url_file: Path | None = None
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "json"
     host: str = "127.0.0.1"
@@ -59,6 +60,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def require_production_forgejo_allowlist(self) -> "Settings":
+        if self.database_url_file is not None:
+            try:
+                database_url = self.database_url_file.read_text(encoding="utf-8").strip()
+            except OSError as error:
+                raise ValueError("unable to read FMCP_DATABASE_URL_FILE") from error
+            if not database_url or len(database_url) > 4096:
+                raise ValueError("FMCP_DATABASE_URL_FILE is empty or too large")
+            self.database_url = database_url
         if self.environment == "production" and not self.forgejo_allowed_base_urls:
             raise ValueError("production requires FMCP_FORGEJO_ALLOWED_BASE_URLS")
         return self

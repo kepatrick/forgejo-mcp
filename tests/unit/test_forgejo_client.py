@@ -43,6 +43,72 @@ async def test_get_version() -> None:
     assert result.version == "16.0.1+gitea-1.22"
 
 
+async def test_get_version_from_private_instance_login_page() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert "Authorization" not in request.headers
+        if request.url.path == "/api/v1/version":
+            assert request.headers["Accept"] == "application/json"
+            return httpx.Response(
+                403,
+                json={"message": "Only signed in user is allowed to call APIs."},
+            )
+        assert request.url.path == "/user/login"
+        assert request.headers["Accept"] == "text/html"
+        return httpx.Response(
+            200,
+            text="assetVersionEncoded: encodeURIComponent('16.0.3~gitea-1.22.0')",
+        )
+
+    client = ForgejoClient(
+        connect_timeout_seconds=2,
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await client.get_version(base_url="https://git.example.test", verify_tls=True)
+
+    assert result.version == "16.0.3+gitea-1.22.0"
+    assert [request.url.path for request in requests] == [
+        "/api/v1/version",
+        "/user/login",
+    ]
+
+
+async def test_private_version_rejects_unexpected_denial() -> None:
+    client = ForgejoClient(
+        connect_timeout_seconds=2,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(403, json={"message": "forbidden"})
+        ),
+    )
+
+    with pytest.raises(ExternalServiceUnavailable, match="unexpected"):
+        await client.get_version(base_url="https://git.example.test", verify_tls=True)
+
+
+async def test_private_version_rejects_invalid_login_marker() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/version":
+            return httpx.Response(
+                403,
+                json={"message": "Only signed in user is allowed to call APIs."},
+            )
+        return httpx.Response(
+            200,
+            text="assetVersionEncoded: encodeURIComponent('not-a-version')",
+        )
+
+    client = ForgejoClient(
+        connect_timeout_seconds=2,
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(ExternalServiceUnavailable, match="version"):
+        await client.get_version(base_url="https://git.example.test", verify_tls=True)
+
+
 async def test_reject_redirect() -> None:
     transport = httpx.MockTransport(
         lambda _request: httpx.Response(302, headers={"location": "https://other.test"})

@@ -4,6 +4,7 @@ import binascii
 import hashlib
 import io
 import ipaddress
+import re
 import time
 import zipfile
 from dataclasses import dataclass
@@ -59,6 +60,11 @@ MAX_ACTION_LOG_BYTES = 1024 * 1024
 MAX_ACTION_LOG_ARCHIVE_BYTES = 10 * 1024 * 1024
 MAX_ACTION_LOG_FILES = 100
 MAX_FORGEJO_RESPONSE_BYTES = MAX_ACTION_LOG_ARCHIVE_BYTES
+PRIVATE_VERSION_MESSAGE = "Only signed in user is allowed to call APIs."
+PRIVATE_VERSION_PATTERN = re.compile(
+    r"assetVersionEncoded:\s*encodeURIComponent\('"
+    r"(?P<version>\d+\.\d+\.\d+(?:[+~][A-Za-z0-9][A-Za-z0-9._-]{0,100})?)'\)"
+)
 
 
 @dataclass(frozen=True)
@@ -1902,11 +1908,45 @@ class ForgejoClient:
             params=None,
             json_body=None,
             resource="version",
-            expected_status=200,
+            expected_status={200, 403},
             accept="application/json",
         )
         if len(response.content) > MAX_VERSION_RESPONSE_BYTES:
             raise ExternalServiceUnavailable("Forgejo version response is too large")
+        if response.status_code == 403:
+            try:
+                denied_payload = response.json()
+            except ValueError as error:
+                raise ExternalServiceUnavailable(
+                    "Forgejo version endpoint returned an unexpected response"
+                ) from error
+            if not (
+                isinstance(denied_payload, dict)
+                and denied_payload.get("message") == PRIVATE_VERSION_MESSAGE
+            ):
+                raise ExternalServiceUnavailable(
+                    "Forgejo version endpoint returned an unexpected response"
+                )
+            login_response = await self._request(
+                method="GET",
+                endpoint=f"{base_url}/user/login",
+                token=None,
+                verify_tls=verify_tls,
+                params=None,
+                json_body=None,
+                resource="login page version",
+                expected_status=200,
+                accept="text/html",
+            )
+            if len(login_response.content) > MAX_VERSION_RESPONSE_BYTES:
+                raise ExternalServiceUnavailable("Forgejo login page is too large")
+            marker = PRIVATE_VERSION_PATTERN.search(login_response.text)
+            if marker is None:
+                raise ExternalServiceUnavailable(
+                    "Forgejo login page did not advertise a version"
+                )
+            private_version = marker.group("version")
+            return ForgejoVersion(version=private_version.replace("~", "+", 1))
         try:
             payload = response.json()
         except ValueError as error:

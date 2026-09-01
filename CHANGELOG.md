@@ -46,6 +46,9 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
+- Support private Forgejo instances with signed-in-only API access by deriving the
+  advertised version from the same-origin login page when, and only when, the
+  unauthenticated version endpoint returns Forgejo's exact signed-in-only denial.
 - Updated the development Forgejo image default from `16.0.2-rootless` to `16.0.3-rootless` while retaining a full 16.0.2 compatibility run.
 - Locked both official Swagger checksums and added a reproducible structural comparison; the only 16.0.3 API schema change marks `IssueMeta.index`, `IssueMeta.owner` and `IssueMeta.repo` as required, with no endpoint impact.
 - Replaced broad E2E Forgejo PATs with the explicit existing scope set (`read:user`, `write:organization`, `write:repository`, `write:issue`).

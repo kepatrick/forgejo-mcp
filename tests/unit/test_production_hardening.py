@@ -5,11 +5,14 @@ import logging
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from forgejo_mcp.application.errors import ExternalServiceUnavailable, ValidationFailed
+from forgejo_mcp.application.forgejo_instance_service import ForgejoInstanceService
 from forgejo_mcp.application.runtime import InvocationCoordinator, ServiceShuttingDown
 from forgejo_mcp.auth.rate_limit import MultiScopeRateLimiter
 from forgejo_mcp.config import Settings
+from forgejo_mcp.forgejo import client as forgejo_client_module
 from forgejo_mcp.forgejo.client import ForgejoClient
 from forgejo_mcp.main import create_app
 from forgejo_mcp.observability.context import reset_request_id, set_request_id
@@ -29,6 +32,59 @@ def test_mcp_request_body_limit_and_request_id() -> None:
     assert rejected.json() == {"detail": "MCP request body is too large"}
     assert rejected.headers["x-request-id"] == "request-123"
     assert live.headers["x-request-id"] == "request-456"
+
+
+def test_production_requires_out_of_band_forgejo_url_allowlist() -> None:
+    with pytest.raises(ValidationError, match="FMCP_FORGEJO_ALLOWED_BASE_URLS"):
+        Settings(environment="production")
+    settings = Settings(
+        environment="production",
+        forgejo_allowed_base_urls=["HTTPS://Git.Example.test/forgejo/"],
+    )
+    assert settings.forgejo_allowed_base_urls == ["https://git.example.test/forgejo"]
+    assert settings.permits_forgejo_base_url("https://git.example.test/forgejo/")
+    assert not settings.permits_forgejo_base_url("https://attacker.example")
+
+
+async def test_forgejo_instance_policy_rejects_untrusted_url_before_network() -> None:
+    service = ForgejoInstanceService(
+        session=None,  # type: ignore[arg-type]
+        settings=Settings(
+            environment="test",
+            forgejo_allowed_base_urls=["https://git.example.test"],
+        ),
+    )
+    with pytest.raises(ValidationFailed, match="deployment policy"):
+        await service.check(base_url="https://attacker.example", verify_tls=True)
+
+
+def test_mcp_rejects_browser_origins_unless_explicitly_allowed() -> None:
+    default_app = create_app(Settings(environment="test"))
+    allowed_app = create_app(
+        Settings(environment="test", mcp_allowed_origins=["https://CLIENT.example:443/"])
+    )
+    with TestClient(default_app) as client:
+        rejected = client.post("/mcp", headers={"Origin": "https://client.example"}, json={})
+    with TestClient(allowed_app) as client:
+        authenticated_later = client.post(
+            "/mcp", headers={"Origin": "https://client.example"}, json={}
+        )
+    assert rejected.status_code == 403
+    assert rejected.headers["vary"] == "Origin"
+    assert authenticated_later.status_code == 401
+
+
+def test_security_headers_disable_caching_and_browser_embedding() -> None:
+    app = create_app(Settings(environment="test"))
+    with TestClient(app) as client:
+        response = client.get("/api/auth/me")
+    assert response.status_code == 401
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
 
 
 def test_metrics_endpoint_exposes_service_and_database_metrics() -> None:
@@ -153,6 +209,18 @@ async def test_forgejo_retries_rate_limits_and_read_timeouts_for_get_only() -> N
     assert client.timeout.pool == 4
 
 
+async def test_forgejo_response_is_bounded_while_streaming(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(forgejo_client_module, "MAX_FORGEJO_RESPONSE_BYTES", 16)
+    client = ForgejoClient(
+        connect_timeout_seconds=1,
+        transport=httpx.MockTransport(lambda _request: httpx.Response(200, content=b"x" * 17)),
+    )
+    with pytest.raises(ExternalServiceUnavailable, match="too large"):
+        await client.get_version(base_url="https://git.example.test", verify_tls=True)
+
+
 async def test_commit_changes_enforces_file_count_and_combined_size() -> None:
     client = ForgejoClient(
         connect_timeout_seconds=1,
@@ -209,3 +277,30 @@ def test_json_logs_include_correlation_fields() -> None:
     assert payload["request_id"] == "request-123"
     assert payload["user_id"] is None
     assert payload["invocation_id"] is None
+
+
+def test_json_logs_redact_credentials_in_messages_and_nested_extras() -> None:
+    formatter = JsonFormatter()
+    record = logging.LogRecord(
+        name="test",
+        level=logging.ERROR,
+        pathname=__file__,
+        lineno=1,
+        msg=(
+            "failed Bearer fmcp_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ "
+            "postgresql://user:database-password@db.example/test"
+        ),
+        args=(),
+        exc_info=None,
+    )
+    record.context = {
+        "authorization": "token forgejo-pat-value",
+        "nested": {"database_url": "postgresql://user:secret@db/test"},
+    }
+    rendered = formatter.format(record)
+    assert "database-password" not in rendered
+    assert "forgejo-pat-value" not in rendered
+    assert "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ" not in rendered
+    payload = json.loads(rendered)
+    assert payload["context"]["authorization"] == "[REDACTED]"
+    assert payload["context"]["nested"]["database_url"] == "[REDACTED]"

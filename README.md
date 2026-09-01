@@ -81,6 +81,8 @@ Open <http://127.0.0.1:8000> and sign in with:
 
 Change the bootstrap password immediately. Direct localhost HTTP requires `FMCP_COOKIE_SECURE=false`; secure cookies should remain enabled behind HTTPS.
 
+Production startup also requires `FMCP_FORGEJO_ALLOWED_BASE_URLS`, a JSON list containing the exact trusted Forgejo base URL (for example `["https://git.example.com"]`). This out-of-band pin prevents a Dashboard administrator from redirecting user PAT verification to another server. Browser-based MCP clients must add their exact origins to `FMCP_MCP_ALLOWED_ORIGINS`; regular MCP clients do not send an `Origin` header.
+
 For logs, shutdown, clean reset, common startup errors and the optional local Forgejo profile, see [Getting started](docs/getting-started.md).
 
 ## First-time setup

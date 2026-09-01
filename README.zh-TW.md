@@ -81,6 +81,8 @@ curl http://127.0.0.1:8000/health/ready
 
 登入後應立刻更換 bootstrap password。直接使用 localhost HTTP 時需要設定 `FMCP_COOKIE_SECURE=false`；前方有 HTTPS 時則應維持 secure cookie。
 
+Production 啟動時也必須設定 `FMCP_FORGEJO_ALLOWED_BASE_URLS`，其值為包含可信 Forgejo base URL 的 JSON 清單（例如 `["https://git.example.com"]`）。這個由部署管理的固定值可防止 Dashboard 管理員把使用者 PAT 驗證導向其他伺服器。以瀏覽器連接 MCP 時，還必須把精確的 origin 加入 `FMCP_MCP_ALLOWED_ORIGINS`；一般 MCP client 不會傳送 `Origin` header。
+
 Logs、停止服務、清除資料、常見啟動錯誤，以及選用的本地 Forgejo profile，請參閱[快速入門](docs/getting-started.zh-TW.md)。
 
 ## 初次設定

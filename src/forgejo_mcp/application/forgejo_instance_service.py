@@ -34,6 +34,8 @@ class ForgejoInstanceService:
 
     async def check(self, *, base_url: str, verify_tls: bool) -> ForgejoConnectionResult:
         normalized_url = normalize_base_url(base_url)
+        if not self.settings.permits_forgejo_base_url(normalized_url):
+            raise ValidationFailed("Forgejo base URL is not permitted by deployment policy")
         if (
             urlsplit(normalized_url).scheme == "http"
             and not self.settings.allow_insecure_forgejo_http

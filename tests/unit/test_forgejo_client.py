@@ -329,6 +329,51 @@ async def test_repository_migration_and_update_validate_sensitive_options() -> N
         )
 
 
+@pytest.mark.parametrize(
+    "clone_addr",
+    [
+        "file:///etc/passwd",
+        "https://localhost/repo.git",
+        "http://127.0.0.1/repo.git",
+        "http://[::1]/repo.git",
+        "https://git.example.test/repo.git?access_token=secret",
+        "git@example.test:owner/repo.git",
+    ],
+)
+async def test_repository_migration_rejects_unsafe_remote_addresses(clone_addr: str) -> None:
+    client = ForgejoClient(
+        connect_timeout_seconds=2,
+        transport=httpx.MockTransport(lambda _request: httpx.Response(500)),
+    )
+    with pytest.raises(ValidationFailed):
+        await client.migrate_repository(
+            base_url="https://git.example.test",
+            token="pat",
+            verify_tls=True,
+            clone_addr=clone_addr,
+            repo_name="repo",
+        )
+
+
+async def test_repository_migration_private_host_requires_explicit_opt_in() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(201, json=repository_payload())
+
+    client = ForgejoClient(
+        connect_timeout_seconds=2,
+        migration_allow_private_hosts=True,
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.migrate_repository(
+        base_url="https://git.example.test",
+        token="pat",
+        verify_tls=True,
+        clone_addr="http://forgejo:3000/owner/repo.git",
+        repo_name="repo",
+    )
+    assert result.id == 7
+
+
 def commit_payload(sha: str = "abc123") -> dict[str, object]:
     return {
         "sha": sha,

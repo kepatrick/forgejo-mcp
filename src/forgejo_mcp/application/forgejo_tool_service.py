@@ -3,7 +3,7 @@ from typing import Any, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from forgejo_mcp.application.errors import Conflict
+from forgejo_mcp.application.errors import ConfigurationUnavailable, Conflict
 from forgejo_mcp.application.forgejo_credential_service import ForgejoCredentialService
 from forgejo_mcp.config import Settings
 from forgejo_mcp.db.models import ForgejoInstance
@@ -27,6 +27,7 @@ from forgejo_mcp.forgejo.models import (
 
 class ForgejoToolService:
     def __init__(self, session: AsyncSession, settings: Settings) -> None:
+        self.settings = settings
         self.credentials = ForgejoCredentialService(session, settings)
         self.instances = ForgejoInstanceRepository(session)
 
@@ -387,5 +388,9 @@ class ForgejoToolService:
         instance = await self.instances.primary()
         if instance is None:
             raise Conflict("Forgejo instance is not configured")
+        if not self.settings.permits_forgejo_base_url(instance.base_url):
+            raise ConfigurationUnavailable(
+                "configured Forgejo base URL is not permitted by deployment policy"
+            )
         token = await self.credentials.decrypted_token_for_user(user_id)
         return instance, token

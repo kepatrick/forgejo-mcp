@@ -17,7 +17,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.responses import JSONResponse
 from starlette.routing import Route
-from starlette.types import Receive, Scope, Send
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from forgejo_mcp.application.errors import ApplicationError, NotFound, ValidationFailed
 from forgejo_mcp.application.forgejo_tool_service import ForgejoToolService
@@ -31,7 +31,7 @@ from forgejo_mcp.auth.mcp_bearer import (
 )
 from forgejo_mcp.auth.rate_limit import MultiScopeRateLimiter
 from forgejo_mcp.authorization.tools import ToolAuthorizationDecision
-from forgejo_mcp.config import Settings
+from forgejo_mcp.config import Settings, normalize_http_origin
 from forgejo_mcp.observability.context import (
     reset_invocation_id,
     reset_user_id,
@@ -91,6 +91,23 @@ class McpHttpApplication:
             )(scope, receive, send)
             return
         await self.manager.handle_request(scope, receive, send)
+
+
+class McpOriginValidationMiddleware:
+    def __init__(self, app: ASGIApp, *, allowed_origins: list[str]) -> None:
+        self.app = app
+        self.allowed_origins = allowed_origins
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        origin = _header(scope, b"origin")
+        if origin is not None and not _origin_allowed(origin, self.allowed_origins):
+            await JSONResponse(
+                {"detail": "MCP browser origin is not allowed"},
+                status_code=403,
+                headers={"Vary": "Origin"},
+            )(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
 
 
 @dataclass(frozen=True)
@@ -219,6 +236,10 @@ def build_mcp_runtime(
         "/mcp",
         endpoint=McpHttpApplication(manager, coordinator, limiter, settings),
         middleware=[
+            Middleware(
+                McpOriginValidationMiddleware,
+                allowed_origins=settings.mcp_allowed_origins,
+            ),
             Middleware(AuthenticationMiddleware, backend=BearerAuthBackend(verifier)),
             Middleware(AuthContextMiddleware),
             Middleware(RequireAuthMiddleware, required_scopes=[]),
@@ -232,6 +253,21 @@ def _access_token() -> AccessToken:
     if access_token is None:
         raise RuntimeError("MCP authentication context is unavailable")
     return access_token
+
+
+def _header(scope: Scope, name: bytes) -> str | None:
+    for header_name, value in scope.get("headers", []):
+        if header_name.lower() == name:
+            return cast(bytes, value).decode("latin-1")
+    return None
+
+
+def _origin_allowed(origin: str, allowed_origins: list[str]) -> bool:
+    try:
+        normalized = normalize_http_origin(origin)
+    except ValueError:
+        return False
+    return normalized in allowed_origins
 
 
 async def _execute_tool(

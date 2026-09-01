@@ -33,6 +33,7 @@ from forgejo_mcp.observability import configure_logging
 from forgejo_mcp.observability.middleware import (
     RequestBodyLimitMiddleware,
     RequestObservabilityMiddleware,
+    SecurityHeadersMiddleware,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         max_bytes=resolved_settings.mcp_request_max_bytes,
     )
     application.add_middleware(RequestObservabilityMiddleware)
+    application.add_middleware(SecurityHeadersMiddleware)
     application.add_exception_handler(ApplicationError, application_error_handler)
     application.include_router(auth_router)
     application.include_router(forgejo_credential_admin_router)

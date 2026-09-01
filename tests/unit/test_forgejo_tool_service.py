@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from forgejo_mcp.application.forgejo_tool_service import ForgejoToolService
+from forgejo_mcp.config import Settings
 
 
 async def test_generic_client_dispatch_does_not_collide_with_method_argument() -> None:
@@ -26,6 +27,7 @@ async def test_generic_client_dispatch_does_not_collide_with_method_argument() -
             return "pat"
 
     service = object.__new__(ForgejoToolService)
+    service.settings = Settings(environment="test")
     service.instances = FakeInstances()  # type: ignore[assignment]
     service.credentials = FakeCredentials()  # type: ignore[assignment]
 

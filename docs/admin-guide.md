@@ -51,9 +51,14 @@ For normal deployments:
 - use HTTPS;
 - do not include credentials, query strings or fragments in the URL;
 - ensure the App can reach the Forgejo API;
+- pin the exact URL out of band with `FMCP_FORGEJO_ALLOWED_BASE_URLS`;
 - keep `FMCP_ALLOW_INSECURE_FORGEJO_HTTP=false`.
 
 HTTP is supported only for the local test profile when explicitly enabled.
+
+Production refuses to start without a non-empty `FMCP_FORGEJO_ALLOWED_BASE_URLS` JSON list. The Dashboard can test and save only URLs in that list. This prevents a compromised local administrator account from redirecting user PAT verification to an attacker-controlled endpoint.
+
+Repository migration accepts only `http`, `https`, `ssh` and `git` URLs with a host. Local paths, URL credentials, query strings, fragments and private/special hosts are rejected by default. Set `FMCP_MIGRATION_ALLOW_PRIVATE_HOSTS=true` only when a trusted private migration source is required, and retain Forgejo's own migration allow/deny policy.
 
 v0.1.0 is contract-tested against Forgejo `16.0.2+gitea-1.22.0` and `16.0.3+gitea-1.22.0`. See [Known limitations](known-limitations.md) before connecting another version.
 

@@ -110,6 +110,8 @@ Bootstrap username 預設為 `admin`；若已在 `deploy/.env` 修改 `FMCP_BOOT
 
 請使用不包含 credential、query string 或 fragment 的 HTTPS base URL。App 會透過 `/api/v1/version` 驗證 Forgejo。後續請參閱[管理員指南](admin-guide.zh-TW.md)。
 
+啟動 production deployment 前，請在 `deploy/.env` 將 `FMCP_FORGEJO_ALLOWED_BASE_URLS` 設為包含此精確 URL 的 JSON 清單。這是由部署管理的安全邊界，不是用於自動探測的清單。
+
 ## 8. 停止或重新啟動
 
 停止並移除 containers，但保留 PostgreSQL data：

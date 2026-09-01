@@ -55,22 +55,21 @@ No additional Forgejo or GitHub permission is introduced.
 
 - The E2E PATs use the same explicit least-privilege scope set on both releases: `read:user`, `write:organization`, `write:repository` and `write:issue`. The previous broad `all` scope is no longer used.
 - The MCP permission registry, global enablement, user allowances, token grants and tool risk classifications are unchanged.
-- No application route, authentication flow, authorization decision, outbound-request destination rule, response-size bound or secret-handling path changed.
+- The compatibility-specific endpoint behavior is unchanged. A subsequent full-project security audit added version-independent hardening for trusted Forgejo URL pinning, migration sources, MCP browser origins, streamed response bounds, invitation concurrency and log redaction.
 - The new GitHub workflow declares only `contents: read` and receives no repository secrets.
 - Swagger downloads are limited to operator/CI-supplied sources, use a 30-second timeout and are checksum-verified before compatibility is accepted.
 - The comparison and E2E scripts use disposable containers and temporary directories; no credentials are written to the repository.
 
-Security regression summary: no critical, high, medium or low regression was identified in the compatibility diff. Existing documented deployment limitations remain unchanged.
+Security regression summary: no critical, high, medium or low regression was introduced by the Forgejo 16.0.3 compatibility diff. The independent audit and fixes are documented in [Security audit — 2026-08-31](security/security-audit-2026-08-31.md).
 
-### SEC-001: Pre-existing frontend build dependency advisory
+### Resolved pre-existing frontend build dependency advisory
 
-- **Severity:** High according to `npm audit`; not introduced by this change.
+- **Original severity:** High according to `npm audit`; not introduced by Forgejo compatibility work.
 - **Location:** `frontend/package-lock.json`, `node_modules/nanoid` and the PostCSS dependency declaration.
-- **Evidence:** the unchanged lockfile resolves `vite -> postcss -> nanoid@3.3.16`; `npm audit --audit-level=high` reports GHSA-2v37-7h3g-55p8, fixed in nanoid 3.3.18.
+- **Evidence:** the baseline lockfile resolved `vite -> postcss -> nanoid@3.3.16`; `npm audit` reported GHSA-2v37-7h3g-55p8.
 - **Impact:** affected custom nanoid generators can loop indefinitely when invoked with a zero size. The package is a transitive frontend build dependency here; no direct application import was found.
-- **Fix:** update the compatible PostCSS/nanoid dependency chain in a dedicated dependency change and run the complete frontend and E2E suites.
-- **Mitigation:** CI uses the committed lockfile through `npm ci`; this compatibility change modifies neither `frontend/package.json` nor `frontend/package-lock.json`.
-- **False-positive notes:** production reachability through the current Vite/PostCSS build path should be reassessed with the dependency update; the npm advisory severity is retained rather than downgraded here.
+- **Fix:** the security patch selects nanoid 3.3.18 in the committed lockfile; `npm audit`, frontend checks and both E2E versions pass.
+- **False-positive notes:** no direct application import or reachable zero-size custom generator was found.
 
 ## Validation results
 
@@ -79,7 +78,7 @@ Validated on 2026-08-31:
 - `scripts/test-forgejo-openapi-compatibility.sh`: passed against both official images; 2 locked differences and 0 endpoint changes.
 - Complete Docker E2E with Forgejo 16.0.2: passed; all 50 registered MCP tools executed.
 - Complete Docker E2E with Forgejo 16.0.3: passed; all 50 registered MCP tools executed.
-- PostgreSQL-backed suite: 77 passed, 1 opt-in external-Forgejo test skipped.
+- PostgreSQL-backed suite: 90 passed, 1 opt-in external-Forgejo test skipped.
 - Ruff lint and format, mypy, ESLint, TypeScript typecheck and React production build: passed.
 - MCP SDK 1.28.1 reports `2025-06-18` among its supported protocol versions, and both integration and E2E initialization succeed with that exact version.
 

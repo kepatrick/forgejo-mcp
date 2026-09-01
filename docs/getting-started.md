@@ -110,6 +110,8 @@ In the Dashboard:
 
 Use an HTTPS base URL without embedded credentials, a query string or a fragment. The App verifies Forgejo through `/api/v1/version`. Continue with the [administrator guide](admin-guide.md).
 
+Before starting a production deployment, set `FMCP_FORGEJO_ALLOWED_BASE_URLS` in `deploy/.env` to a JSON list containing this exact URL. The value is an out-of-band security boundary, not a discovery list.
+
 ## 8. Stop or restart
 
 Stop and remove the containers while retaining PostgreSQL data:

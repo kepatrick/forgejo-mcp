@@ -3,6 +3,7 @@ import base64
 import binascii
 import hashlib
 import io
+import ipaddress
 import time
 import zipfile
 from dataclasses import dataclass
@@ -57,6 +58,7 @@ MAX_DIFF_BYTES = 2 * 1024 * 1024
 MAX_ACTION_LOG_BYTES = 1024 * 1024
 MAX_ACTION_LOG_ARCHIVE_BYTES = 10 * 1024 * 1024
 MAX_ACTION_LOG_FILES = 100
+MAX_FORGEJO_RESPONSE_BYTES = MAX_ACTION_LOG_ARCHIVE_BYTES
 
 
 @dataclass(frozen=True)
@@ -159,6 +161,7 @@ class ForgejoClient:
         retry_max_delay_seconds: float = 2.0,
         commit_max_files: int = 100,
         commit_max_total_bytes: int = 10 * 1024 * 1024,
+        migration_allow_private_hosts: bool = False,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.timeout = httpx.Timeout(
@@ -171,6 +174,7 @@ class ForgejoClient:
         self.retry_max_delay_seconds = retry_max_delay_seconds
         self.commit_max_files = commit_max_files
         self.commit_max_total_bytes = commit_max_total_bytes
+        self.migration_allow_private_hosts = migration_allow_private_hosts
         self.transport = transport
 
     async def list_repositories(
@@ -283,7 +287,9 @@ class ForgejoClient:
         }
         _reject_unknown_options(options, allowed_options, "repository migration")
         data: dict[str, Any] = {
-            "clone_addr": _clone_address(clone_addr),
+            "clone_addr": _clone_address(
+                clone_addr, allow_private_hosts=self.migration_allow_private_hosts
+            ),
             "repo_name": _repository_name(repo_name),
         }
         _copy_repository_options(data, options, migration=True)
@@ -1812,20 +1818,23 @@ class ForgejoClient:
         for attempt in range(retries + 1):
             started = time.monotonic()
             try:
-                async with httpx.AsyncClient(
-                    timeout=self.timeout,
-                    verify=verify_tls,
-                    follow_redirects=False,
-                    headers={"Accept": accept, "User-Agent": "forgejo-mcp/0.1.0"},
-                    transport=self.transport,
-                ) as client:
-                    response = await client.request(
+                async with (
+                    httpx.AsyncClient(
+                        timeout=self.timeout,
+                        verify=verify_tls,
+                        follow_redirects=False,
+                        headers={"Accept": accept, "User-Agent": "forgejo-mcp/0.1.0"},
+                        transport=self.transport,
+                    ) as client,
+                    client.stream(
                         method,
                         endpoint,
                         params=params,
                         json=json_body,
                         headers=headers,
-                    )
+                    ) as streamed_response,
+                ):
+                    response = await _bounded_response(streamed_response)
             except (
                 httpx.ConnectError,
                 httpx.ConnectTimeout,
@@ -2054,20 +2063,67 @@ def _copy_repository_options(
             raise ValidationFailed(f"unsupported {option_type} option")
 
 
-def _clone_address(value: str) -> str:
+def _clone_address(value: str, *, allow_private_hosts: bool) -> str:
     address = _bounded_option_string(value, "clone_addr", 2048)
     if any(character.isspace() for character in address):
         raise ValidationFailed("clone_addr is invalid")
-    if "://" in address:
-        try:
-            parsed = urlsplit(address)
-        except ValueError as error:
-            raise ValidationFailed("clone_addr is invalid") from error
-        if parsed.username is not None or parsed.password is not None:
-            raise ValidationFailed(
-                "clone_addr must not contain credentials; use auth_username and auth_password"
-            )
+    try:
+        parsed = urlsplit(address)
+        _ = parsed.port
+    except ValueError as error:
+        raise ValidationFailed("clone_addr is invalid") from error
+    if parsed.scheme.lower() not in {"http", "https", "ssh", "git"} or parsed.hostname is None:
+        raise ValidationFailed("clone_addr must be an http, https, ssh, or git URL with a host")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValidationFailed(
+            "clone_addr must not contain credentials; use auth_username and auth_password"
+        )
+    if parsed.query or parsed.fragment:
+        raise ValidationFailed("clone_addr must not contain a query string or fragment")
+    if not allow_private_hosts and _is_private_migration_host(parsed.hostname):
+        raise ValidationFailed(
+            "clone_addr must use a public host unless private migration hosts are "
+            "explicitly enabled"
+        )
     return address
+
+
+def _is_private_migration_host(hostname: str) -> bool:
+    normalized = hostname.rstrip(".").casefold()
+    if (
+        "." not in normalized
+        or normalized == "localhost"
+        or normalized.endswith((".localhost", ".local", ".internal", ".home.arpa"))
+    ):
+        return True
+    try:
+        address = ipaddress.ip_address(normalized)
+    except ValueError:
+        return False
+    return not address.is_global
+
+
+async def _bounded_response(response: httpx.Response) -> httpx.Response:
+    content_length = response.headers.get("Content-Length")
+    if content_length is not None:
+        try:
+            declared_length = int(content_length)
+        except ValueError:
+            declared_length = 0
+        if declared_length > MAX_FORGEJO_RESPONSE_BYTES:
+            raise ExternalServiceUnavailable("Forgejo response is too large")
+    content = bytearray()
+    async for chunk in response.aiter_bytes():
+        content.extend(chunk)
+        if len(content) > MAX_FORGEJO_RESPONSE_BYTES:
+            raise ExternalServiceUnavailable("Forgejo response is too large")
+    return httpx.Response(
+        status_code=response.status_code,
+        headers=response.headers,
+        content=bytes(content),
+        request=response.request,
+        extensions=response.extensions,
+    )
 
 
 def _bounded_option_string(

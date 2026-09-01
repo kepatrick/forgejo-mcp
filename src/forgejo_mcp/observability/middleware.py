@@ -101,6 +101,40 @@ class RequestObservabilityMiddleware:
             reset_request_id(context_token)
 
 
+class SecurityHeadersMiddleware:
+    """Apply browser hardening and prevent credential-bearing responses from being cached."""
+
+    def __init__(self, app: AsgiApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        path = str(scope.get("path", ""))
+
+        async def secured_send(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = list(message.get("headers", []))
+                _set_header(headers, b"x-content-type-options", b"nosniff")
+                _set_header(headers, b"x-frame-options", b"DENY")
+                _set_header(headers, b"referrer-policy", b"no-referrer")
+                _set_header(
+                    headers,
+                    b"content-security-policy",
+                    b"default-src 'self'; base-uri 'none'; frame-ancestors 'none'; "
+                    b"form-action 'self'; object-src 'none'; script-src 'self'; "
+                    b"style-src 'self'; img-src 'self' data:; connect-src 'self'",
+                )
+                if path == "/mcp" or path.startswith("/api/"):
+                    _set_header(headers, b"cache-control", b"no-store")
+                    _set_header(headers, b"pragma", b"no-cache")
+                message = {**message, "headers": headers}
+            await send(message)
+
+        await self.app(scope, receive, secured_send)
+
+
 def _content_length(scope: Scope) -> int | None:
     for name, value in scope.get("headers", []):
         if name.lower() == b"content-length":
@@ -131,3 +165,8 @@ def _route_group(path: str) -> str:
     if path.startswith("/api/"):
         return "/api/*"
     return "/frontend"
+
+
+def _set_header(headers: list[tuple[bytes, bytes]], name: bytes, value: bytes) -> None:
+    headers[:] = [(key, current) for key, current in headers if key.lower() != name]
+    headers.append((name, value))

@@ -16,14 +16,19 @@ class InvitationRepository:
     def add(self, invitation: UserInvitation) -> None:
         self.session.add(invitation)
 
-    async def by_token_hash(self, token_hash: str) -> UserInvitation | None:
+    async def by_token_hash(
+        self, token_hash: str, *, for_update: bool = False
+    ) -> UserInvitation | None:
+        statement = (
+            select(UserInvitation)
+            .options(selectinload(UserInvitation.user).selectinload(User.account))
+            .where(UserInvitation.token_hash == token_hash)
+        )
+        if for_update:
+            statement = statement.with_for_update()
         return cast(
             UserInvitation | None,
-            await self.session.scalar(
-                select(UserInvitation)
-                .options(selectinload(UserInvitation.user).selectinload(User.account))
-                .where(UserInvitation.token_hash == token_hash)
-            ),
+            await self.session.scalar(statement),
         )
 
     async def get_for_user(

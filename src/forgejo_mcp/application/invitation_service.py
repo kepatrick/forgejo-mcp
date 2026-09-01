@@ -25,8 +25,8 @@ class InvitationService:
         self.invitations = InvitationRepository(session)
         self.sessions = SessionRepository(session)
 
-    async def _load_valid(self, token: str) -> UserInvitation:
-        invitation = await self.invitations.by_token_hash(hash_token(token))
+    async def _load_valid(self, token: str, *, for_update: bool = False) -> UserInvitation:
+        invitation = await self.invitations.by_token_hash(hash_token(token), for_update=for_update)
         now = datetime.now(UTC)
         if invitation is None:
             raise NotFound("invitation is invalid or expired")
@@ -51,7 +51,7 @@ class InvitationService:
         )
 
     async def accept(self, token: str, password: str) -> str:
-        invitation = await self._load_valid(token)
+        invitation = await self._load_valid(token, for_update=True)
         account = invitation.user.account
         if account is None:
             raise Conflict("invitation account is unavailable")

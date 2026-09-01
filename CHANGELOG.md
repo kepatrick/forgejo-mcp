@@ -50,3 +50,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Locked both official Swagger checksums and added a reproducible structural comparison; the only 16.0.3 API schema change marks `IssueMeta.index`, `IssueMeta.owner` and `IssueMeta.repo` as required, with no endpoint impact.
 - Replaced broad E2E Forgejo PATs with the explicit existing scope set (`read:user`, `write:organization`, `write:repository`, `write:issue`).
 - Made MCP `2025-06-18` negotiation explicit in integration and Docker E2E coverage.
+
+### Security
+
+- Pin production Forgejo base URLs out of band so Dashboard administration cannot redirect user PAT verification.
+- Reject unsafe repository migration URLs and private/special migration hosts by default.
+- Enforce an explicit browser `Origin` allowlist on the MCP endpoint and add no-store/CSP/browser hardening headers.
+- Bound Forgejo response bodies while streaming, serialize invitation acceptance with a row lock, and redact credential patterns from all log formats.
+- Upgrade `nanoid` and `cryptography` to patched releases identified by dependency auditing.

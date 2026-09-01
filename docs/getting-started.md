@@ -27,12 +27,6 @@ Copy the example environment file:
 cp deploy/compose.example.env deploy/.env
 ```
 
-Open `deploy/.env` and replace `POSTGRES_PASSWORD` with a long random value. A hexadecimal value avoids URL-encoding ambiguity:
-
-```bash
-openssl rand -hex 32
-```
-
 For direct access through `http://127.0.0.1:8000`, keep:
 
 ```dotenv
@@ -49,11 +43,19 @@ Do not commit `deploy/.env`.
 mkdir -p deploy/secrets
 openssl rand -base64 32 > deploy/secrets/admin_password
 openssl rand -base64 32 > deploy/secrets/credential_key
-chmod 600 deploy/secrets/admin_password deploy/secrets/credential_key
+postgres_password="$(openssl rand -hex 32)"
+printf '%s\n' "$postgres_password" > deploy/secrets/postgres_password
+printf 'postgresql+asyncpg://forgejo_mcp:%s@postgres:5432/forgejo_mcp\n' \
+  "$postgres_password" > deploy/secrets/database_url
+unset postgres_password
+chmod 600 deploy/secrets/admin_password deploy/secrets/credential_key \
+  deploy/secrets/postgres_password deploy/secrets/database_url
 ```
 
 - `admin_password` is the initial Dashboard administrator password.
 - `credential_key` encrypts stored Forgejo PATs.
+- `postgres_password` is read by PostgreSQL through `POSTGRES_PASSWORD_FILE`.
+- `database_url` is staged for the unprivileged App without exposing it through Docker environment inspection.
 
 Do not commit, share or casually replace these files. Replacing the credential key makes existing encrypted PATs unusable. The container stages the read-only secret mounts and then runs the application as the unprivileged `app` user.
 
@@ -162,10 +164,6 @@ This profile starts a local Forgejo service but does not represent a supported c
 
 ## Common startup problems
 
-### Compose reports that `POSTGRES_PASSWORD` is not set
-
-Ensure the command includes `--env-file deploy/.env` and that the value is present and non-empty.
-
 ### A secret mount fails
 
 Confirm that these files exist:
@@ -173,9 +171,11 @@ Confirm that these files exist:
 ```text
 deploy/secrets/admin_password
 deploy/secrets/credential_key
+deploy/secrets/database_url
+deploy/secrets/postgres_password
 ```
 
-If custom absolute paths are configured with `FMCP_ADMIN_PASSWORD_FILE` or `FMCP_CREDENTIAL_KEY_FILE`, ensure Docker can read them.
+If custom absolute secret paths are configured in `deploy/.env`, ensure Docker can read them.
 
 ### Port 8000 or 5433 is already in use
 

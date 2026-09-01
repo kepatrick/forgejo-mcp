@@ -29,6 +29,8 @@ export FMCP_ENVIRONMENT=test
 export FMCP_FORGEJO_ALLOWED_BASE_URLS='["http://forgejo:3000"]'
 export FMCP_ADMIN_PASSWORD_FILE="$temporary_dir/admin_password"
 export FMCP_CREDENTIAL_KEY_FILE="$temporary_dir/credential_key"
+export FMCP_DATABASE_URL_SECRET_FILE="$temporary_dir/database_url"
+export FMCP_POSTGRES_PASSWORD_FILE="$temporary_dir/postgres_password"
 export FMCP_RUNNER_CONFIG_FILE="$temporary_dir/runner-config.yml"
 export FMCP_E2E_ADMIN_PASSWORD="Admin-E2E-pass-123!"
 export FMCP_E2E_DEVELOPER_PASSWORD="Developer-E2E-pass-123!"
@@ -38,13 +40,17 @@ export FMCP_E2E_FORGEJO_URL="http://127.0.0.1:$FORGEJO_TEST_HTTP_PORT"
 export FMCP_E2E_FORGEJO_INTERNAL_URL="http://forgejo:3000"
 
 printf '%s\n' "$FMCP_E2E_ADMIN_PASSWORD" > "$FMCP_ADMIN_PASSWORD_FILE"
+printf '%s\n' "$POSTGRES_PASSWORD" > "$FMCP_POSTGRES_PASSWORD_FILE"
+printf 'postgresql+asyncpg://forgejo_mcp:%s@postgres:5432/forgejo_mcp\n' \
+    "$POSTGRES_PASSWORD" > "$FMCP_DATABASE_URL_SECRET_FILE"
 uv run python - <<PY
 import base64
 import os
 from pathlib import Path
 Path("$FMCP_CREDENTIAL_KEY_FILE").write_bytes(base64.b64encode(os.urandom(32)) + b"\n")
 PY
-chmod 0600 "$FMCP_ADMIN_PASSWORD_FILE" "$FMCP_CREDENTIAL_KEY_FILE"
+chmod 0600 "$FMCP_ADMIN_PASSWORD_FILE" "$FMCP_CREDENTIAL_KEY_FILE" \
+    "$FMCP_DATABASE_URL_SECRET_FILE" "$FMCP_POSTGRES_PASSWORD_FILE"
 
 compose() {
     docker compose -p "$project" -f deploy/compose.yaml \

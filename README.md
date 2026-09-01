@@ -57,12 +57,17 @@ From the repository root:
 
 ```bash
 cp deploy/compose.example.env deploy/.env
-# Edit deploy/.env and replace POSTGRES_PASSWORD before continuing.
 
 mkdir -p deploy/secrets
 openssl rand -base64 32 > deploy/secrets/admin_password
 openssl rand -base64 32 > deploy/secrets/credential_key
-chmod 600 deploy/secrets/admin_password deploy/secrets/credential_key
+postgres_password="$(openssl rand -hex 32)"
+printf '%s\n' "$postgres_password" > deploy/secrets/postgres_password
+printf 'postgresql+asyncpg://forgejo_mcp:%s@postgres:5432/forgejo_mcp\n' \
+  "$postgres_password" > deploy/secrets/database_url
+unset postgres_password
+chmod 600 deploy/secrets/admin_password deploy/secrets/credential_key \
+  deploy/secrets/postgres_password deploy/secrets/database_url
 
 docker compose --env-file deploy/.env -f deploy/compose.yaml up --build -d
 ```

@@ -44,7 +44,7 @@ On first sign-in:
 
 ## 2. Configure the Forgejo instance
 
-Enter the company Forgejo base URL in the Dashboard. Forgejo MCP normalizes the URL and verifies `/api/v1/version` before saving it.
+Enter the company Forgejo base URL in the Dashboard. Forgejo MCP normalizes the URL and verifies `/api/v1/version` before saving it. If Forgejo is configured to allow API calls only for signed-in users, the App accepts only Forgejo's exact signed-in-only response and derives the advertised version from the same-origin login page without sending a PAT. Redirects remain disabled and the response is size bounded.
 
 For normal deployments:
 

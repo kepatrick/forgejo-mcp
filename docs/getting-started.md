@@ -108,7 +108,7 @@ In the Dashboard:
 3. enable the required tools globally;
 4. create and invite users.
 
-Use an HTTPS base URL without embedded credentials, a query string or a fragment. The App verifies Forgejo through `/api/v1/version`. Continue with the [administrator guide](admin-guide.md).
+Use an HTTPS base URL without embedded credentials, a query string or a fragment. The App verifies Forgejo through `/api/v1/version`. Signed-in-only Forgejo instances are supported through a bounded, same-origin login-page version fallback that sends no PAT. Continue with the [administrator guide](admin-guide.md).
 
 Before starting a production deployment, set `FMCP_FORGEJO_ALLOWED_BASE_URLS` in `deploy/.env` to a JSON list containing this exact URL. The value is an out-of-band security boundary, not a discovery list.
 

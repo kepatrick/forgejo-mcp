@@ -46,6 +46,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
+- Add a permanent authenticated Dashboard control for changing the current account password, with confirmation and automatic revocation of other sessions.
 - Support private Forgejo instances with signed-in-only API access by deriving the
   advertised version from the same-origin login page when, and only when, the
   unauthenticated version endpoint returns Forgejo's exact signed-in-only denial.

@@ -13,7 +13,7 @@ Forgejo MCP 是一套自架的 [Model Context Protocol](https://modelcontextprot
 - 提供 50 個工具，涵蓋 repository、組織 repository 建立、migration 與 pull mirror 管理、git tree、branch、commit、label、milestone、Issue、pull request、review、Actions run、job、log、artifact、tag 與 release。
 - 在 Forgejo 原有權限之外，增加全域、使用者與 token 三層工具授權。
 - 使用者透過已驗證且限制權限範圍的 Forgejo PAT，以自己的 Forgejo 身分操作。
-- 可選擇啟用 OAuth 2.1 authorization code、PKCE S256、明確 consent、短效 access token 與 rotating refresh token；預設關閉。
+- 可選擇啟用 OAuth 2.1 authorization code、PKCE S256、可選 1/7/30/90 天的 consent、短效 access token 與 rotating refresh token；預設關閉。
 - 使用 AES-256-GCM 加密儲存 PAT，MCP token 只顯示一次。
 - 透過 Web Dashboard 管理 Forgejo 連線、使用者、權限及稽核紀錄。
 - 提供遮蔽敏感資訊的 invocation audit、structured logs、health endpoints 與 Prometheus metrics。
@@ -118,7 +118,7 @@ Transport:     Streamable HTTP
 Authorization: Bearer fmcp_...
 ```
 
-MCP token 只會顯示一次，請存放在 client 的 secret storage；系統不接受 query-string token。欄位對應、連線確認與問題排查方式請參閱 [MCP client 設定](docs/mcp-client-configuration.zh-TW.md)。
+OAuth client 會使用本地 Forgejo MCP 帳號登入並提供有期限的明確 consent；它不會取得 Forgejo PAT。Static MCP token 只會顯示一次，請存放在 client 的 secret storage；系統不接受 query-string token。欄位對應、連線確認與問題排查方式請參閱 [MCP client 設定](docs/mcp-client-configuration.zh-TW.md)。
 
 ## 文件
 

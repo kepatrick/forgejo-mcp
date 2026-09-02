@@ -177,6 +177,8 @@ def create_oauth_routes(service: OAuthService, settings: Settings) -> list[Route
                         client_id=details.client_id,
                         redirect_uri=details.redirect_uri,
                         username=current.account.username,
+                        grant_ttl_options_days=details.grant_ttl_options_days,
+                        default_grant_ttl_days=details.default_grant_ttl_days,
                     )
                 )
         response.set_cookie(
@@ -254,10 +256,19 @@ def create_oauth_routes(service: OAuthService, settings: Settings) -> list[Route
         interaction = _form_string(form, "request", 80)
         action = _form_string(form, "action", 16)
         csrf = _form_string(form, "csrf", 100)
+        grant_ttl_value = _form_string(form, "grant_ttl_days", 3)
         csrf_cookie = request.cookies.get(CSRF_COOKIE)
         session_token = request.cookies.get("fmcp_session")
         if not interaction or action not in {"approve", "deny"}:
             return _oauth_html(_message_page("Request rejected", "Consent is invalid."), 400)
+        if action == "approve" and (
+            not grant_ttl_value or not grant_ttl_value.isascii() or not grant_ttl_value.isdigit()
+        ):
+            return _oauth_html(
+                _message_page("Request rejected", "Authorization lifetime is invalid."),
+                400,
+            )
+        grant_ttl_days = int(grant_ttl_value) if action == "approve" else None
         if not csrf_cookie or not csrf or not hmac.compare_digest(csrf_cookie, csrf):
             return _oauth_html(_message_page("Request rejected", "CSRF validation failed."), 403)
         if session_token is None:
@@ -277,6 +288,7 @@ def create_oauth_routes(service: OAuthService, settings: Settings) -> list[Route
                     interaction=interaction,
                     account_id=current.account_id,
                     approve=action == "approve",
+                    grant_ttl_days=grant_ttl_days,
                 )
             except (ValueError, RegistrationError, TokenError):
                 return _oauth_html(
@@ -423,7 +435,17 @@ def _consent_page(
     client_id: str,
     redirect_uri: str,
     username: str,
+    grant_ttl_options_days: tuple[int, ...],
+    default_grant_ttl_days: int,
 ) -> str:
+    lifetime_options = "".join(
+        "<option value='{days}'{selected}>{days} day{suffix}</option>".format(
+            days=days,
+            selected=" selected" if days == default_grant_ttl_days else "",
+            suffix="" if days == 1 else "s",
+        )
+        for days in grant_ttl_options_days
+    )
     return (
         "<section><p class='eyebrow'>Forgejo MCP</p><h1>Authorize MCP access?</h1>"
         f"<p><strong>{escape(client_name)}</strong> wants to connect as "
@@ -436,11 +458,14 @@ def _consent_page(
         "<form method='post' action='/oauth/consent'>"
         f"<input type='hidden' name='request' value='{escape(interaction)}'>"
         f"<input type='hidden' name='csrf' value='{escape(csrf)}'>"
+        "<label>Authorization duration"
+        f"<select name='grant_ttl_days' required>{lifetime_options}</select></label>"
         "<div class='actions'><button type='submit' name='action' "
         "value='approve'>Authorize</button>"
         "<button class='secondary' type='submit' name='action' value='deny'>Deny</button>"
-        "</div></form><p class='hint'>Access tokens expire automatically and refresh token "
-        "reuse revokes the complete authorization.</p></section>"
+        "</div></form><p class='hint'>Access tokens expire after one hour and are refreshed "
+        "automatically until the selected authorization expiry. You can revoke access at any "
+        "time.</p></section>"
     )
 
 
@@ -461,7 +486,7 @@ section { border: 1px solid #3b3b3b; border-radius: 1rem; padding: 2rem; backgro
 h1 { margin: .25rem 0 1rem; font-size: 1.75rem; }
 .eyebrow { color: #a8d5a2; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
 label { display: grid; gap: .4rem; margin: 1rem 0; }
-input { border: 1px solid #555; border-radius: .5rem; padding: .75rem;
+input, select { border: 1px solid #555; border-radius: .5rem; padding: .75rem;
   background: #111; color: inherit; }
 button { border: 0; border-radius: .5rem; padding: .75rem 1rem;
   background: #62a85a; color: #071006; font-weight: 700; cursor: pointer; }

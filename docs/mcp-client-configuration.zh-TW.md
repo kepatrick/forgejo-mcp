@@ -26,9 +26,13 @@ Credential 與 token 的建立及維護方式請參閱[使用者指南](user-gui
 https://forgejo-mcp.example/mcp
 ```
 
-Client 會使用 PKCE S256、公開 client registration、Forgejo MCP 本地登入與明確 consent，自動取得短效 access token 與 rotating refresh token。只有 deployment 至少設定一個精確 CIMD origin 時，server 才會公告 CIMD 支援；allowlist 為空時仍可使用 DCR。請使用與 Forgejo 身分連結的 **Forgejo MCP 本地帳號** 登入；不要在 OAuth 頁面或 client 輸入 Forgejo PAT。
+Client 會使用 PKCE S256、公開 client registration、Forgejo MCP 本地登入與明確 consent，自動取得短效 access token 與 rotating refresh token。只有 deployment 至少設定一個精確 CIMD origin 時，server 才會公告 CIMD 支援；allowlist 為空時仍可使用 DCR。請使用與 Forgejo 身分連結的 **Forgejo MCP 本地帳號** 登入，並在 consent 頁面選擇 authorization 期限。標準選項為 1、7、30 或 90 天，並受 deployment policy 上限限制；不要在 OAuth 頁面或 client 輸入 Forgejo PAT。
 
 OAuth 不會增加權限。Access token 只取得「全域啟用工具」與「user allowance」的交集。不要手動組合或貼上 `/authorize` URL；`client_id`、redirect URI、challenge、state 與 resource 應由 client 產生並驗證。
+
+OAuth access token 預設一小時到期，client 會自動 refresh，直到選定的絕對 authorization 到期日；rotation 不會延長該日期。短暫 concurrency grace 內的重複 refresh 會被拒絕，但不會破壞目前 family；超過 grace 的 reuse 會被視為 replay 並撤銷整個 authorization。Dashboard 目前可能把這些短效 OAuth access records 與 static token 一起顯示，因此單一 access record 顯示 `expired` 不代表整個 authorization 已到期。
+
+修改這些設定不會復原已撤銷的 family。若 client 顯示 Forgejo 已中斷連線，請移除或中斷舊 connector，然後重新完成 OAuth authorization。
 
 Generic DCR 與 Anthropic-shaped CIMD metadata 已納入自動測試，但每個具名 client 的目前版本仍應完成 live connection test 後才正式核准。
 

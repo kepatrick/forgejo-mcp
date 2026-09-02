@@ -27,6 +27,25 @@ def test_cimd_url_is_exactly_origin_allowlisted() -> None:
     assert not service._is_allowed_cimd_url("https://claude.ai/client.json?redirect=evil")
 
 
+def test_consent_lifetime_choices_are_exactly_policy_bounded() -> None:
+    settings = Settings(
+        environment="test",
+        oauth_enabled=True,
+        oauth_issuer_url="https://mcp.example.test",
+        oauth_resource_url="https://mcp.example.test/mcp",
+        oauth_refresh_token_ttl_days=14,
+        oauth_refresh_token_max_ttl_days=30,
+    )
+    service = OAuthService(lambda: None, settings)  # type: ignore[arg-type]
+    assert settings.oauth_grant_ttl_options_days == (1, 7, 14, 30)
+    assert service._validate_grant_ttl_days(None) == 14
+    assert service._validate_grant_ttl_days(7) == 7
+    with pytest.raises(ValueError, match="not allowed"):
+        service._validate_grant_ttl_days(90)
+    with pytest.raises(ValueError, match="not allowed"):
+        service._validate_grant_ttl_days(True)
+
+
 async def fetch_cimd(response: httpx.Response):
     async def handler(_request: httpx.Request) -> httpx.Response:
         return response

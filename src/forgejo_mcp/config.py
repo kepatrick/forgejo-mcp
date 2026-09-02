@@ -53,6 +53,8 @@ class Settings(BaseSettings):
     oauth_cimd_allowed_origins: list[str] = Field(default_factory=list)
     oauth_access_token_ttl_seconds: int = Field(default=3600, ge=300, le=86400)
     oauth_refresh_token_ttl_days: int = Field(default=30, ge=1, le=90)
+    oauth_refresh_token_max_ttl_days: int = Field(default=90, ge=1, le=90)
+    oauth_refresh_token_reuse_grace_seconds: int = Field(default=10, ge=0, le=60)
     oauth_authorization_code_ttl_seconds: int = Field(default=300, ge=60, le=600)
     oauth_interaction_ttl_seconds: int = Field(default=600, ge=120, le=1800)
     oauth_client_metadata_cache_seconds: int = Field(default=3600, ge=300, le=86400)
@@ -105,6 +107,10 @@ class Settings(BaseSettings):
         if self.environment == "production" and not self.forgejo_allowed_base_urls:
             raise ValueError("production requires FMCP_FORGEJO_ALLOWED_BASE_URLS")
         if self.oauth_enabled:
+            if self.oauth_refresh_token_ttl_days > self.oauth_refresh_token_max_ttl_days:
+                raise ValueError(
+                    "OAuth refresh token default TTL must not exceed the configured maximum"
+                )
             if self.oauth_issuer_url is None or self.oauth_resource_url is None:
                 raise ValueError("OAuth requires FMCP_OAUTH_ISSUER_URL and FMCP_OAUTH_RESOURCE_URL")
             self.oauth_issuer_url = _normalize_oauth_url(
@@ -151,6 +157,15 @@ class Settings(BaseSettings):
         if self.cookie_secure is not None:
             return self.cookie_secure
         return self.environment == "production"
+
+    @property
+    def oauth_grant_ttl_options_days(self) -> tuple[int, ...]:
+        """Return exact consent choices bounded by deployment policy."""
+        standard = {1, 7, 30, 90}
+        standard.add(self.oauth_refresh_token_ttl_days)
+        return tuple(
+            sorted(days for days in standard if days <= self.oauth_refresh_token_max_ttl_days)
+        )
 
 
 @lru_cache

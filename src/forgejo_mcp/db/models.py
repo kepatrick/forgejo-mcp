@@ -278,6 +278,7 @@ class OAuthAuthorizationCode(Base):
     scopes: Mapped[list[str]] = mapped_column(JSON)
     resource: Mapped[str] = mapped_column(String(2048))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    refresh_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

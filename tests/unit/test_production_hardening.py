@@ -199,6 +199,18 @@ def test_production_oauth_requires_consistent_https_urls() -> None:
     assert dcr_only.oauth_cimd_allowed_origins == []
 
 
+def test_oauth_default_grant_lifetime_cannot_exceed_policy_maximum() -> None:
+    with pytest.raises(ValidationError, match="default TTL must not exceed"):
+        Settings(
+            environment="test",
+            oauth_enabled=True,
+            oauth_issuer_url="https://mcp.example.test",
+            oauth_resource_url="https://mcp.example.test/mcp",
+            oauth_refresh_token_ttl_days=30,
+            oauth_refresh_token_max_ttl_days=7,
+        )
+
+
 def test_database_url_file_overrides_environment_value(tmp_path: Path) -> None:
     database_url_file = tmp_path / "database_url"
     database_url_file.write_text(

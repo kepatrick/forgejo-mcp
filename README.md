@@ -13,7 +13,7 @@ Users connect with their own scoped Forgejo personal access tokens (PATs). Admin
 - 50 tools for repositories, organization repository creation, migration and pull-mirror management, git trees, branches, commits, labels, milestones, Issues, pull requests, reviews, Actions runs, jobs, logs and artifacts, tags and releases.
 - Global, user and token-level tool authorization in addition to Forgejo's own permissions.
 - Per-user Forgejo identity through a verified, scoped PAT.
-- Optional OAuth 2.1 authorization-code login with PKCE S256, consent, short-lived access tokens, rotating refresh tokens, DCR and allowlisted CIMD.
+- Optional OAuth 2.1 authorization-code login with PKCE S256, selectable 1/7/30/90-day consent, short-lived access tokens, rotating refresh tokens, DCR and allowlisted CIMD.
 - AES-256-GCM encryption for stored PATs, with high-entropy MCP tokens shown once and stored only as hashes.
 - A web Dashboard for Forgejo configuration, users, permissions and audit records.
 - Redacted invocation auditing, structured logs, health endpoints and Prometheus metrics.
@@ -118,7 +118,7 @@ Transport:     Streamable HTTP
 Authorization: Bearer fmcp_...
 ```
 
-OAuth clients use local Forgejo MCP login and explicit consent; they never receive the Forgejo PAT. The static MCP token is shown only once and belongs in the client's secret storage; query-string access tokens are rejected. See [MCP client configuration](docs/mcp-client-configuration.md) for both connection modes.
+OAuth clients use local Forgejo MCP login and explicit time-bounded consent; they never receive the Forgejo PAT. The static MCP token is shown only once and belongs in the client's secret storage; query-string access tokens are rejected. See [MCP client configuration](docs/mcp-client-configuration.md) for both connection modes.
 
 ## Documentation
 

@@ -92,6 +92,8 @@ class ConsentDetails:
     redirect_uri: str
     scopes: tuple[str, ...]
     expires_at: datetime
+    grant_ttl_options_days: tuple[int, ...]
+    default_grant_ttl_days: int
 
 
 class OAuthService(
@@ -222,6 +224,8 @@ class OAuthService(
                 redirect_uri=record.redirect_uri,
                 scopes=tuple(record.scopes),
                 expires_at=record.expires_at,
+                grant_ttl_options_days=self.settings.oauth_grant_ttl_options_days,
+                default_grant_ttl_days=self.settings.oauth_refresh_token_ttl_days,
             )
 
     async def resolve_consent(
@@ -230,6 +234,7 @@ class OAuthService(
         interaction: str,
         account_id: uuid.UUID,
         approve: bool,
+        grant_ttl_days: int | None = None,
     ) -> str:
         if not _valid_interaction_format(interaction):
             raise ValueError("authorization request is invalid or expired")
@@ -256,6 +261,9 @@ class OAuthService(
             if client is None:
                 raise ValueError("OAuth client is unavailable")
 
+            selected_grant_ttl_days = (
+                self._validate_grant_ttl_days(grant_ttl_days) if approve else None
+            )
             record.resolved_at = now
             if not approve:
                 session.add(
@@ -275,6 +283,8 @@ class OAuthService(
                 )
 
             await self._require_authorizable_user(session, account.user_id)
+            assert selected_grant_ttl_days is not None
+            refresh_expires_at = now + timedelta(days=selected_grant_ttl_days)
             code = new_oauth_code()
             session.add(
                 OAuthAuthorizationCode(
@@ -287,6 +297,7 @@ class OAuthService(
                     resource=record.resource,
                     expires_at=now
                     + timedelta(seconds=self.settings.oauth_authorization_code_ttl_seconds),
+                    refresh_expires_at=refresh_expires_at,
                 )
             )
             session.add(
@@ -295,7 +306,10 @@ class OAuthService(
                     action="oauth.authorization_approved",
                     target_type="oauth_client",
                     target_id=str(client.id),
-                    details={"scopes": record.scopes},
+                    details={
+                        "scopes": record.scopes,
+                        "grant_expires_at": refresh_expires_at.isoformat(),
+                    },
                 )
             )
             await session.commit()
@@ -365,6 +379,9 @@ class OAuthService(
             if record.resource != self.resource_url:
                 raise TokenError("invalid_grant", "authorization code audience is invalid")
             record.consumed_at = now
+            refresh_expires_at = record.refresh_expires_at or now + timedelta(
+                days=self.settings.oauth_refresh_token_ttl_days
+            )
             token = await self._issue_token_pair(
                 session,
                 client_record=client_record,
@@ -372,6 +389,7 @@ class OAuthService(
                 scopes=record.scopes,
                 resource=record.resource,
                 family_id=uuid.uuid4(),
+                refresh_expires_at=refresh_expires_at,
             )
             await session.commit()
             return token
@@ -422,7 +440,25 @@ class OAuthService(
             now = datetime.now(UTC)
             if record is None or record.expires_at <= now:
                 raise TokenError("invalid_grant", "refresh token is invalid")
-            if record.rotated_at is not None or record.revoked_at is not None:
+            if record.revoked_at is not None:
+                raise TokenError("invalid_grant", "refresh token is invalid")
+            if record.rotated_at is not None:
+                reuse_age_seconds = (now - record.rotated_at).total_seconds()
+                if reuse_age_seconds <= self.settings.oauth_refresh_token_reuse_grace_seconds:
+                    session.add(
+                        ManagementAuditEvent(
+                            action="oauth.concurrent_refresh_rejected",
+                            target_type="oauth_client",
+                            target_id=str(record.client_id),
+                            details={
+                                "grace_seconds": (
+                                    self.settings.oauth_refresh_token_reuse_grace_seconds
+                                )
+                            },
+                        )
+                    )
+                    await session.commit()
+                    raise TokenError("invalid_grant", "refresh token was already rotated")
                 await self._revoke_family(session, record.family_id, now)
                 await session.commit()
                 raise TokenError("invalid_grant", "refresh token reuse was detected")
@@ -441,6 +477,7 @@ class OAuthService(
                 scopes=scopes,
                 resource=record.resource,
                 family_id=record.family_id,
+                refresh_expires_at=record.expires_at,
             )
             await session.commit()
             return token
@@ -504,12 +541,20 @@ class OAuthService(
         scopes: list[str],
         resource: str,
         family_id: uuid.UUID,
+        refresh_expires_at: datetime,
     ) -> OAuthToken:
         await self._require_authorizable_user(session, user_id)
         tool_names = await self._effective_tool_names(session, user_id)
         if not tool_names:
             raise TokenError("invalid_grant", "user has no effective MCP tools")
         now = datetime.now(UTC)
+        access_expires_at = min(
+            now + timedelta(seconds=self.settings.oauth_access_token_ttl_seconds),
+            refresh_expires_at,
+        )
+        expires_in = int((access_expires_at - now).total_seconds())
+        if expires_in <= 0:
+            raise TokenError("invalid_grant", "authorization has expired")
         access_plaintext = new_mcp_token()
         refresh_plaintext = new_oauth_refresh_token()
         access_record = McpToken(
@@ -520,7 +565,7 @@ class OAuthService(
             token_hash=hash_token(access_plaintext),
             kind="oauth",
             enabled=True,
-            expires_at=now + timedelta(seconds=self.settings.oauth_access_token_ttl_seconds),
+            expires_at=access_expires_at,
         )
         session.add(access_record)
         await session.flush()
@@ -537,7 +582,7 @@ class OAuthService(
             scopes=scopes,
             resource=resource,
             mcp_token_id=access_record.id,
-            expires_at=now + timedelta(days=self.settings.oauth_refresh_token_ttl_days),
+            expires_at=refresh_expires_at,
         )
         session.add(refresh_record)
         await session.flush()
@@ -560,6 +605,7 @@ class OAuthService(
                 details={
                     "client_id": str(client_record.id),
                     "expires_at": access_record.expires_at.isoformat(),
+                    "grant_expires_at": refresh_expires_at.isoformat(),
                     "tool_count": len(tool_names),
                 },
             )
@@ -567,10 +613,16 @@ class OAuthService(
         return OAuthToken(
             access_token=access_plaintext,
             token_type="Bearer",
-            expires_in=self.settings.oauth_access_token_ttl_seconds,
+            expires_in=expires_in,
             scope=" ".join(scopes),
             refresh_token=refresh_plaintext,
         )
+
+    def _validate_grant_ttl_days(self, value: int | None) -> int:
+        selected = self.settings.oauth_refresh_token_ttl_days if value is None else value
+        if type(selected) is not int or selected not in self.settings.oauth_grant_ttl_options_days:
+            raise ValueError("authorization lifetime is not allowed")
+        return selected
 
     async def _require_authorizable_user(
         self,

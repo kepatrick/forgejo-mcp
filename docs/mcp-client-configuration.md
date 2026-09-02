@@ -28,11 +28,13 @@ https://forgejo-mcp.example/mcp
 
 The server advertises RFC 9728 protected-resource metadata and authorization-server metadata. The client dynamically registers as a public client or supplies an allowlisted Client ID Metadata Document, creates a PKCE S256 challenge, opens the Forgejo MCP login/consent page, and exchanges the one-time code for a short-lived access token and rotating refresh token. CIMD support is advertised only when the deployment has configured at least one exact CIMD origin; DCR remains available when that allowlist is empty.
 
-The user signs in with the **local Forgejo MCP Dashboard account** linked to their Forgejo identity. Do not enter the Forgejo PAT in the OAuth page or in the MCP client. The PAT remains encrypted server-side and OAuth cannot add tools: each access token receives only the intersection of globally enabled tools and the user's existing allowance.
+The user signs in with the **local Forgejo MCP Dashboard account** linked to their Forgejo identity and chooses an authorization duration on the consent page. The standard choices are 1, 7, 30 or 90 days, capped by deployment policy. Do not enter the Forgejo PAT in the OAuth page or in the MCP client. The PAT remains encrypted server-side and OAuth cannot add tools: each access token receives only the intersection of globally enabled tools and the user's existing allowance.
 
 Do not construct or paste an `/authorize` URL manually. Values such as `client_id`, `redirect_uri`, `code_challenge`, `state` and `resource` are generated and validated by the MCP client. A placeholder or stale authorization URL normally produces `Not Found`, `invalid_request` or `invalid_grant`.
 
-OAuth access tokens use the same `fmcp_...` opaque format internally, expire automatically, are never placed in query strings, and are not displayed in the Dashboard. Refresh tokens rotate on every use; reuse of an older refresh token revokes the complete authorization family.
+OAuth access tokens use the same `fmcp_...` opaque format internally, expire after one hour by default, and are never placed in query strings. The current Dashboard may show these short-lived OAuth access records alongside static tokens: an `expired` access record does not by itself mean that the authorization has ended. The MCP client refreshes access automatically until the selected absolute authorization expiry; rotation never pushes that date forward. A duplicate refresh received inside the short concurrency grace is rejected without destroying the active family. Reuse after that grace is treated as a replay and revokes the complete authorization.
+
+Changing these settings does not revive a family that has already been revoked. If a client reports that Forgejo is no longer connected, remove or disconnect the stale connector and complete a new OAuth authorization.
 
 Client-specific OAuth behavior changes independently of this server. Generic DCR and allowlisted CIMD are covered by automated tests, including an Anthropic-shaped metadata document, but a named client should be considered production-approved only after its current release has completed a live connection test.
 

@@ -330,12 +330,19 @@ def run_oauth_flow() -> None:
         "OAuth consent page",
     )
     assert "OAuth cannot add permissions" in consent.text
+    assert "name='grant_ttl_days'" in consent.text
+    assert "value='90'" in consent.text
     dashboard_csrf = client.cookies.get("fmcp_csrf")
     assert dashboard_csrf is not None
     approval = client.post(
         "/oauth/consent",
         headers={"Origin": APP_URL},
-        data={"request": interaction, "action": "approve", "csrf": dashboard_csrf},
+        data={
+            "request": interaction,
+            "action": "approve",
+            "csrf": dashboard_csrf,
+            "grant_ttl_days": "90",
+        },
     )
     assert approval.status_code == 302
     callback = parse_qs(urlsplit(approval.headers["location"]).query)
@@ -398,6 +405,18 @@ def run_oauth_flow() -> None:
         },
     )
     assert revoked_old.status_code == 401
+    concurrent_reuse = client.post(
+        "/token",
+        data={
+            "grant_type": "refresh_token",
+            "client_id": client_id,
+            "refresh_token": refresh_token,
+            "scope": "mcp:tools",
+            "resource": OAUTH_RESOURCE,
+        },
+    )
+    assert concurrent_reuse.status_code == 400
+    assert concurrent_reuse.json()["error"] == "invalid_grant"
     rotated_mcp = McpClient(rotated_access)
     rotated_mcp.initialize()
     revoked = client.post(
@@ -411,7 +430,8 @@ def run_oauth_flow() -> None:
     )
     assert revoked.status_code == 200
     print(
-        "PASS OAuth 2.1 DCR, PKCE, login, consent, MCP 2025-06-18, refresh rotation, and revocation"
+        "PASS OAuth 2.1 DCR, PKCE, 90-day consent, MCP 2025-06-18, safe concurrent "
+        "refresh rejection, and revocation"
     )
 
 

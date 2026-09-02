@@ -4,19 +4,22 @@ import hashlib
 import json
 import logging
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from mcp.server.auth.provider import TokenError
+from mcp.shared.auth import OAuthToken
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from forgejo_mcp.application.oauth_service import OAuthService
 from forgejo_mcp.application.tool_permission_service import ToolPermissionService
 from forgejo_mcp.auth.passwords import hash_password
+from forgejo_mcp.auth.tokens import hash_token
 from forgejo_mcp.config import Settings
 from forgejo_mcp.db.models import (
     Account,
@@ -24,6 +27,9 @@ from forgejo_mcp.db.models import (
     CredentialStatus,
     ForgejoCredential,
     ManagementAuditEvent,
+    McpToken,
+    OAuthAuthorizationCode,
+    OAuthRefreshToken,
     RecordStatus,
     User,
 )
@@ -214,6 +220,7 @@ def approve_authorization(
     interaction: str,
     *,
     login: bool,
+    grant_ttl_days: int = 30,
 ) -> str:
     response = client.get("/oauth/consent", params={"request": interaction})
     assert response.status_code == 200
@@ -249,24 +256,56 @@ def approve_authorization(
     csrf = client.cookies.get("fmcp_csrf")
     assert csrf is not None
     assert "OAuth cannot add permissions" in response.text
+    assert "name='grant_ttl_days'" in response.text
+    assert "value='1'" in response.text
+    assert "value='7'" in response.text
+    assert "value='30' selected" in response.text
+    assert "value='90'" in response.text
     rejected_origin = client.post(
         "/oauth/consent",
         headers={"Origin": "https://attacker.example"},
-        data={"request": interaction, "action": "approve", "csrf": csrf},
+        data={
+            "request": interaction,
+            "action": "approve",
+            "csrf": csrf,
+            "grant_ttl_days": str(grant_ttl_days),
+        },
         follow_redirects=False,
     )
     assert rejected_origin.status_code == 403
     rejected_csrf = client.post(
         "/oauth/consent",
         headers={"Origin": ISSUER},
-        data={"request": interaction, "action": "approve", "csrf": "invalid-csrf"},
+        data={
+            "request": interaction,
+            "action": "approve",
+            "csrf": "invalid-csrf",
+            "grant_ttl_days": str(grant_ttl_days),
+        },
         follow_redirects=False,
     )
     assert rejected_csrf.status_code == 403
+    rejected_lifetime = client.post(
+        "/oauth/consent",
+        headers={"Origin": ISSUER},
+        data={
+            "request": interaction,
+            "action": "approve",
+            "csrf": csrf,
+            "grant_ttl_days": "2",
+        },
+        follow_redirects=False,
+    )
+    assert rejected_lifetime.status_code == 400
     response = client.post(
         "/oauth/consent",
         headers={"Origin": ISSUER},
-        data={"request": interaction, "action": "approve", "csrf": csrf},
+        data={
+            "request": interaction,
+            "action": "approve",
+            "csrf": csrf,
+            "grant_ttl_days": str(grant_ttl_days),
+        },
         follow_redirects=False,
     )
     assert response.status_code == 302
@@ -378,6 +417,85 @@ async def audit_payloads() -> str:
     return serialized
 
 
+async def authorization_grant_expiry(code: str) -> datetime:
+    assert DATABASE_URL is not None
+    engine = create_async_engine(DATABASE_URL)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        expiry = await session.scalar(
+            select(OAuthAuthorizationCode.refresh_expires_at).where(
+                OAuthAuthorizationCode.code_hash == hash_token(code)
+            )
+        )
+        assert expiry is not None
+    await engine.dispose()
+    return expiry
+
+
+async def issued_token_expiries(access_token: str, refresh_token: str) -> tuple[datetime, datetime]:
+    assert DATABASE_URL is not None
+    engine = create_async_engine(DATABASE_URL)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        access_expiry = await session.scalar(
+            select(McpToken.expires_at).where(McpToken.token_hash == hash_token(access_token))
+        )
+        refresh_expiry = await session.scalar(
+            select(OAuthRefreshToken.expires_at).where(
+                OAuthRefreshToken.token_hash == hash_token(refresh_token)
+            )
+        )
+        assert access_expiry is not None
+        assert refresh_expiry is not None
+    await engine.dispose()
+    return access_expiry, refresh_expiry
+
+
+async def concurrent_refresh(client_id: str, refresh_token: str) -> tuple[str, str]:
+    assert DATABASE_URL is not None
+    engine = create_async_engine(DATABASE_URL)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    service = OAuthService(lambda: factory, oauth_settings())
+    client = await service.get_client(client_id)
+    assert client is not None
+    first = await service.load_refresh_token(client, refresh_token)
+    second = await service.load_refresh_token(client, refresh_token)
+    assert first is not None
+    assert second is not None
+    results = await asyncio.gather(
+        service.exchange_refresh_token(client, first, ["mcp:tools"]),
+        service.exchange_refresh_token(client, second, ["mcp:tools"]),
+        return_exceptions=True,
+    )
+    successes = [result for result in results if isinstance(result, OAuthToken)]
+    failures = [result for result in results if isinstance(result, BaseException)]
+    assert len(successes) == 1
+    assert len(failures) == 1
+    assert isinstance(failures[0], TokenError)
+    assert failures[0].error == "invalid_grant"
+    issued = successes[0]
+    assert issued.refresh_token is not None
+    await engine.dispose()
+    return issued.access_token, issued.refresh_token
+
+
+async def age_rotated_refresh_token(refresh_token: str, age_seconds: int) -> None:
+    assert DATABASE_URL is not None
+    engine = create_async_engine(DATABASE_URL)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        record = await session.scalar(
+            select(OAuthRefreshToken).where(
+                OAuthRefreshToken.token_hash == hash_token(refresh_token)
+            )
+        )
+        assert record is not None
+        assert record.rotated_at is not None
+        record.rotated_at = datetime.now(UTC) - timedelta(seconds=age_seconds)
+        await session.commit()
+    await engine.dispose()
+
+
 def test_complete_oauth21_flow_enforces_permissions_and_rotation(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -394,7 +512,10 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
 
         client_id = register_client(client)
         interaction = start_authorization(client, client_id, verifier, include_resource=False)
-        code = approve_authorization(client, interaction, login=True)
+        code = approve_authorization(client, interaction, login=True, grant_ttl_days=7)
+        grant_expiry = asyncio.run(authorization_grant_expiry(code))
+        remaining_grant = grant_expiry - datetime.now(UTC)
+        assert timedelta(days=6, hours=23) < remaining_grant <= timedelta(days=7)
         replayed_consent = client.post(
             "/oauth/consent",
             headers={"Origin": ISSUER},
@@ -438,6 +559,12 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
 
         first_access = str(tokens["access_token"])
         first_refresh = str(tokens["refresh_token"])
+        first_access_expiry, first_refresh_expiry = asyncio.run(
+            issued_token_expiries(first_access, first_refresh)
+        )
+        assert first_refresh_expiry == grant_expiry
+        assert first_access_expiry < first_refresh_expiry
+        assert timedelta(minutes=59) < first_access_expiry - datetime.now(UTC) <= timedelta(hours=1)
         session_id = initialize_mcp(client, first_access)
         listed = rpc(
             client,
@@ -461,20 +588,19 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
         assert wrong_refresh_resource.status_code == 400
         assert wrong_refresh_resource.json()["error"] == "invalid_request"
 
-        rotated = client.post(
-            "/token",
-            data={
-                "grant_type": "refresh_token",
-                "client_id": client_id,
-                "refresh_token": first_refresh,
-                "scope": "mcp:tools",
-            },
-        )
-        assert rotated.status_code == 200
-        second_access = str(rotated.json()["access_token"])
+        second_access, second_refresh = asyncio.run(concurrent_refresh(client_id, first_refresh))
         assert second_access != first_access
         assert_mcp_unauthorized(client, first_access)
+        initialize_mcp(client, second_access)
+        _, second_refresh_expiry = asyncio.run(issued_token_expiries(second_access, second_refresh))
+        assert second_refresh_expiry == grant_expiry
 
+        asyncio.run(
+            age_rotated_refresh_token(
+                first_refresh,
+                oauth_settings().oauth_refresh_token_reuse_grace_seconds + 1,
+            )
+        )
         reused = client.post(
             "/token",
             data={
@@ -527,7 +653,8 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
         code,
         first_access,
         first_refresh,
-        str(rotated.json()["refresh_token"]),
+        second_access,
+        second_refresh,
         second_code,
         revocable_access,
         str(revocable["refresh_token"]),

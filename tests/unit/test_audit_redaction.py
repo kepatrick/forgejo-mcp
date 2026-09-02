@@ -56,6 +56,10 @@ def test_credentials_embedded_in_remote_url_are_redacted_before_persistence() ->
             "description": "mirror from ssh://deploy:private-value@example.test/repo.git",
             "multiple_at": "https://user@nested-secret@example.test/repo.git",
             "without_scheme": "mirror-bot:schemeless-secret@example.test/repo.git",
+            "slash_prefixed": "/mirror-bot:slash-secret@example.test/repo.git",
+            "remote_with_at": "mirror-bot:part@credential@example.test/repo.git",
+            "many_at": f"mirror-bot:{'part@' * 256}many-at-secret@example.test/repo.git",
+            "ordinary_text": "meet at 12:30@office",
         }
     )
 
@@ -64,11 +68,18 @@ def test_credentials_embedded_in_remote_url_are_redacted_before_persistence() ->
         "description": "mirror from ssh://[REDACTED]@example.test/repo.git",
         "multiple_at": "https://[REDACTED]@example.test/repo.git",
         "without_scheme": "[REDACTED]@example.test/repo.git",
+        "slash_prefixed": "/[REDACTED]@example.test/repo.git",
+        "remote_with_at": "[REDACTED]@example.test/repo.git",
+        "many_at": "[REDACTED]@example.test/repo.git",
+        "ordinary_text": "meet at 12:30@office",
     }
     assert "super-secret" not in repr(result.value)
     assert "private-value" not in repr(result.value)
     assert "nested-secret" not in repr(result.value)
     assert "schemeless-secret" not in repr(result.value)
+    assert "slash-secret" not in repr(result.value)
+    assert "part@credential" not in repr(result.value)
+    assert "many-at-secret" not in repr(result.value)
 
 
 def test_additional_credential_key_names_are_redacted_without_hiding_paths() -> None:
@@ -160,11 +171,13 @@ def test_extract_target_redacts_credentials_and_bounds_text() -> None:
     target = extract_target(
         {
             "repo": f"https://mirror:{marker}@example.test/repo.git",
+            "ref": f"/mirror:part@{marker}@example.test/repo.git",
             "path": "x" * 600,
         }
     )
 
     assert target["repo"] == "https://[REDACTED]@example.test/repo.git"
+    assert target["ref"] == "/[REDACTED]@example.test/repo.git"
     assert marker not in repr(target)
     assert target["path"] == f"{'x' * 512}…[TRUNCATED]"
 

@@ -28,7 +28,7 @@
 
 ### Validation de la branche, actualisée après le correctif de suivi
 
-- Python : **135 tests collectés, 134 réussis et 1 E2E à credentials externes ignoré** ; migrations PostgreSQL appliquées sur une base jetable.
+- Python : **144 tests collectés, 143 réussis et 1 E2E à credentials externes ignoré** ; migrations PostgreSQL appliquées sur une base jetable.
 - Qualité : Ruff check/format et MyPy strict réussis ; ESLint, TypeScript et build Vite réussis.
 - Dépendances : `pip-audit` et `npm audit` rapportent **0 vulnérabilité connue**.
 - Analyse statique : Bandit rapporte **0 moyen / 0 élevé** ; ses 24 alertes basses sont des asserts de narrowing ou des littéraux de protocole examinés.
@@ -102,12 +102,64 @@ Les **2 failles HAUTES sont réellement corrigées** (confirmé par attaque, pas
 - L'assouplissement OAuth `resource` reste une décision de compatibilité mono-ressource documentée : une valeur présente mais incorrecte est toujours rejetée et aucun grant, outil ou scope supplémentaire n'est accordé.
 - **Permissions :** aucun scope PAT Forgejo, outil MCP, grant MCP ou permission GitHub supplémentaire n'a été ajouté.
 
-### Validation finale du suivi
+### Validation de la branche après correction finale
 
-- Python : **135 tests collectés, 134 réussis et 1 E2E externe ignoré**.
+- Python : **144 tests collectés, 143 réussis et 1 E2E externe ignoré**.
 - Ruff check/format, MyPy strict, ESLint, TypeScript et build Vite : réussis.
 - Docker E2E : les 50 outils, OAuth et MCP `2025-06-18` passent contre Forgejo 16.0.2 et 16.0.3.
 - PostgreSQL : migrations OAuth appliquées avec succès sur une base neuve jetable.
+
+---
+
+## 🔁🔁 Second contre-audit — vérification adverse du commit de suivi `e53b3fa` (2026-09-02, nuit)
+
+> Note Claude — contre-vérification **adverse et indépendante** du commit `e53b3fa`, menée APRÈS sa publication (contrairement à la section « Disposition de suivi » ci-dessus, livrée dans le commit lui-même). Témoins exécutés via le venv du projet, y compris l'extraction du code de `e53b3fa^` pour prouver les défauts d'origine par contraste ; diff intégral relu ; pytest/ruff/mypy ré-exécutés par l'auditeur.
+
+### Intégrité du commit : ✅ confirmée
+
+- Diff complet lu : les 7 correctifs annoncés sont tous présents, tous dans le sens du durcissement. **Rien hors périmètre** : ni `pyproject.toml`, ni `uv.lock`, ni `package-lock.json`, aucun endpoint ni fonctionnalité nouvelle, aucun code suspect, aucun secret dans le diff.
+- Tests renforcés, pas affaiblis : la seule assertion retirée (« `check()` n'alloue pas ») est rendue obsolète par le nouveau design de réservation et remplacée par un contrôle plus fort ; les nouveaux tests sont adverses (fakes qui prouvent que le PAT **ne part pas** et **n'est pas déchiffré**, 10 threads → exactement 5 acceptés, marqueur `must-not-reach-target`).
+- Docs : les sections sur-vendues de `38bde2d` sont **requalifiées** en « avant contre-audit », pas effacées — l'histoire est préservée.
+- Ré-exécuté par l'auditeur : `pytest tests/unit` → **126 passed** ; 135 collectés (conforme à l'annonce) ; `ruff` et `mypy src` → 0 erreur. État git : poussé sur `origin/compat/forgejo-16.0.3`, working tree propre.
+
+### Verdict par correctif (témoins exécutés)
+
+| Constat du 1ᵉʳ contre-audit | Verdict adverse |
+|---|---|
+| A — MOY. `extract_target` brut | ✅ **CONFIRMÉ CORRIGÉ** — identité de fonction prouvée (pas de copie morte), URL à credentials / userinfo encodé / authority sans schéma → redigés, valeurs bornées à 512, témoin positif lisible. Résidus faibles : credential précédée d'un `/` échappe au motif ; mot de passe contenant `@` sans schéma partiellement redigé ; **nouveaux faux positifs** sur texte libre de forme `x:y@z` (`12:30@office` → redigé) — perte de lisibilité d'audit, pas de fuite. |
+| B — MOY. garde TLS à l'usage | ✅ **CONFIRMÉ CORRIGÉ** — refus `ConfigurationUnavailable` **avant** déchiffrement (sentinelle jamais atteinte) et **avant** envoi du PAT, aux deux points d'usage, symétrique de l'allowlist ; le flag gouverne bien le passage (témoins avec/sans). |
+| C — BASSE XFF dupliqués | ✅ **CONFIRMÉ CORRIGÉ** — `getlist` + jointure ; le spoof qui gagnait avec `headers.get` (prouvé au passage) ne gagne plus. |
+| D — BASSE camelCase | ✅ **CONFIRMÉ CORRIGÉ** — `apiKey`/`privateKey`/`XApiKey`… redigés ; batterie de 32 clés réelles du registre : **0 faux positif**. |
+| E — BASSE rafale de logins | ✅ **CONFIRMÉ CORRIGÉ** — réservation atomique avec lease : ancien code 20/20 tentatives passantes (défaut prouvé sur `e53b3fa^`), nouveau code 5/20 exactement. Changement assumé : >5 logins **valides** simultanés pour un même `ip:username` → 429 pour les excédentaires (DoS marginal inhérent à la réservation). |
+| F — BASSE Dockerfile + alignement espaces | ⚠️ **PARTIEL** — `--no-proxy-headers` présent ✓, segments `.` refusés par le client ✓, `" .. "` ASCII refusé par les schémas ✓, aucune valeur légitime refusée ✓. **Mais** le lookahead des schémas n'énumère que `[ \t\r\n]` alors que le client strippe l'Unicode : `'\xa0..\xa0'`, `'　..'` passent encore les schémas ; et `_FILE_PATH` n'a reçu aucun traitement des espaces. **Exploitabilité nulle** (le client reste strict et rejette tout — le désalignement est toujours dans le sens schéma-permissif/client-strict), mais la prétention d'alignement des deux couches n'est tenue que pour les espaces ASCII sur owner/repo/ref. |
+
+### Réserves de provenance
+
+- Le « contre-audit adverse » de la section précédente et sa clôture sont co-livrés dans le même commit `e53b3fa` : son indépendance repose sur le texte, pas sur l'historique git. Le présent second contre-audit, lui, est postérieur et externe au commit.
+- Non re-prouvés localement par l'auditeur : Docker E2E 50 outils, migrations sur base jetable, ESLint/build Vite, re-scans Gitleaks/Bandit/pip-audit/npm audit post-commit. Unit/ruff/mypy : confirmés.
+
+### État final après second contre-audit
+
+**0 CRITIQUE, 0 HAUTE, 0 MOYENNE applicative résiduelle.** Restent : des résidus BASSE/informationnels (espaces Unicode dans les patterns de schéma et `_FILE_PATH` — défense en profondeur intacte ; résidus du motif de redaction et ses faux positifs sur texte libre ; 429 possibles sur rafale de logins valides) et les risques opérationnels documentés (DNS des migrations résolu par Forgejo, images par tag et non par digest, limiteurs mono-processus, TLS/backup à la charge de l'opérateur), plus la décision produit assumée sur le `resource` OAuth optionnel. Le dépôt est dans un état de sécurité solide pour un v0.1.0 auto-hébergé derrière un reverse proxy TLS correctement configuré.
+
+---
+
+## Disposition après le second contre-audit
+
+> Cette disposition a été ajoutée après réception du second contre-audit. Son texte original ci-dessus est conservé intégralement.
+
+| Réserve basse confirmée | Disposition | Correctif et témoin |
+|---|---|---|
+| Autorités sans schéma incomplètement redigées | **Corrigé** | Le motif accepte maintenant un préfixe `/`, consomme un mot de passe contenant `@` jusqu'à l'autorité finale et exige une forme hôte/chemin. Les marqueurs sensibles disparaissent de l'audit tandis que le texte ordinaire `12:30@office` reste inchangé. |
+| Espaces Unicode autour des dot-segments | **Corrigé** | Les schémas owner/repository/ref utilisent désormais la classe Unicode `\s`. Le schéma de chemin reproduit aussi le `strip()` global du client pour les chemins absolus et les segments initiaux ou finaux `.`/`..`. Les espaces insécables et idéographiques sont couverts par les tests. |
+| Plus de cinq logins valides simultanés sur la même clé | **Comportement accepté** | La réservation atomique est la propriété de sécurité recherchée. Les succès libèrent leur propre lease ; les appels excédentaires reçoivent temporairement `429`, sans élargissement de permission ni persistance de secret. |
+
+### Verdict après clôture
+
+- **Critique : 0 ; Haute : 0 ; Moyenne applicative : 0.**
+- Les deux résidus bas de code démontrés par le second contre-audit sont corrigés et testés dans les deux sens (secret neutralisé, texte légitime préservé).
+- Restent les contraintes opérationnelles déjà documentées et la décision mono-ressource sur OAuth `resource` ; aucun scope PAT, outil, grant MCP ou droit GitHub n'est ajouté.
+- Validation Python : **144 tests collectés, 143 réussis, 1 E2E externe ignoré**, après migrations complètes sur une base PostgreSQL neuve.
 
 ---
 

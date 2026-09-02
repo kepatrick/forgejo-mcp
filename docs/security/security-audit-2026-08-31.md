@@ -147,7 +147,7 @@ Automated checks included the full Python test suite, Ruff, MyPy, frontend lint/
 
 ## Validation evidence
 
-- Python unit/integration suite: 135 collected, 134 passed; the separate external-credential E2E was skipped as designed.
+- Python unit/integration suite: 144 collected, 143 passed; the separate external-credential E2E was skipped as designed.
 - Ruff check/format and strict MyPy: pass.
 - Frontend ESLint, TypeScript and production build: pass.
 - `npm audit`: 0 vulnerabilities after lock update.

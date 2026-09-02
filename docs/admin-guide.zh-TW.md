@@ -63,7 +63,7 @@ Production 在 `FMCP_FORGEJO_ALLOWED_BASE_URLS` JSON 清單為空時會拒絕啟
 
 Repository migration 只接受帶 host 的 `http`、`https`、`ssh` 與 `git` URL。預設會拒絕本地路徑、URL credential、query string、fragment，以及 private/special host。只有在必須使用可信的私有 migration source 時才設定 `FMCP_MIGRATION_ALLOW_PRIVATE_HOSTS=true`，並維持 Forgejo 自身的 migration allow/deny policy。
 
-v0.1.0 已依 Forgejo `16.0.2+gitea-1.22.0` 與 `16.0.3+gitea-1.22.0` contract 測試。連接其他版本前請先閱讀[已知限制](known-limitations.zh-TW.md)。
+v0.1.0 的最低支援版本為 Forgejo `16.0.3+gitea-1.22.0`。Forgejo 16.0.2 僅保留作為比較基準，不是受支援的部署目標。連接更新版本前請先閱讀[已知限制](known-limitations.zh-TW.md)。
 
 ## 3. 設定全域工具
 

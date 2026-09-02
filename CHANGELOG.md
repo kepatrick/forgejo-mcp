@@ -49,6 +49,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
+- Defined Forgejo 16.0.3 as the minimum supported release; the locked 16.0.2 contract and E2E run remain comparison evidence only and do not extend the published support range.
 - Add a permanent authenticated Dashboard control for changing the current account password, with confirmation and automatic revocation of other sessions.
 - Support private Forgejo instances with signed-in-only API access by deriving the
   advertised version from the same-origin login page when, and only when, the
@@ -83,4 +84,5 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Redact and bound extracted invocation targets as well as full arguments, including camelCase secret keys and credential-bearing authorities without an explicit URL scheme.
 - Reserve login and invitation rate-limit attempts atomically, and combine duplicate `X-Forwarded-For` lines before resolving the first untrusted hop.
 - Disable implicit Uvicorn proxy-header parsing in the standalone image and reject redundant file-path dot segments in both MCP schemas and the Forgejo client.
+- Redact slash-prefixed and `@`-containing credential authorities without a URL scheme while preserving ordinary `x:y@z` audit text, and align MCP dot-segment schemas with the client's Unicode whitespace normalization.
 - Bind the reference App and test Forgejo host ports to loopback by default, with an explicit App bind-address override for reviewed deployments.

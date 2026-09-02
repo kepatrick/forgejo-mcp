@@ -91,9 +91,12 @@ def test_registry_contains_stable_default_disabled_tool_spec() -> None:
         {"owner": ".", "repo": "repo"},
         {"owner": "..", "repo": "repo"},
         {"owner": " .. ", "repo": "repo"},
+        {"owner": "\u00a0..\u00a0", "repo": "repo"},
+        {"owner": "\u3000.\u3000", "repo": "repo"},
         {"owner": "owner", "repo": "."},
         {"owner": "owner", "repo": ".."},
         {"owner": "owner", "repo": " . "},
+        {"owner": "owner", "repo": "\u00a0..\u00a0"},
     ],
 )
 def test_repository_tool_schema_rejects_dot_segments(arguments: dict[str, str]) -> None:
@@ -102,7 +105,7 @@ def test_repository_tool_schema_rejects_dot_segments(arguments: dict[str, str]) 
     assert list(validator.iter_errors(arguments))
 
 
-@pytest.mark.parametrize("sha", [".", "..", " . ", " .. "])
+@pytest.mark.parametrize("sha", [".", "..", " . ", " .. ", "\u00a0..\u00a0", "\u3000.\u3000"])
 def test_ref_tool_schema_rejects_dot_segments(sha: str) -> None:
     validator = jsonschema.Draft202012Validator(get_tool("forgejo_get_commit").input_schema)
 
@@ -112,7 +115,20 @@ def test_ref_tool_schema_rejects_dot_segments(sha: str) -> None:
     )
 
 
-@pytest.mark.parametrize("path", [".", "..", "./README.md", "src/./module.py", "src/../secret"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".",
+        "..",
+        "./README.md",
+        "src/./module.py",
+        "src/../secret",
+        "\u00a0..\u00a0",
+        "\u00a0../README.md",
+        "src/..\u3000",
+        "\u3000/absolute",
+    ],
+)
 def test_file_path_tool_schema_rejects_dot_segments(path: str) -> None:
     validator = jsonschema.Draft202012Validator(get_tool("forgejo_get_file_content").input_schema)
 

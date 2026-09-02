@@ -6,8 +6,9 @@ v0.1.0 是第一個開源版本，已提供完整 Forgejo 開發流程與核心�
 
 ## 相容性
 
-- API contract 固定為 Forgejo `16.0.2+gitea-1.22.0` 與 `16.0.3+gitea-1.22.0`；開發預設使用官方 mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`。
-- 其他 Forgejo 版本可能可以運作，但使用前必須執行 `scripts/verify_forgejo_openapi.py` 與本地 integration suite。
+- 最低支援版本與正式 API contract 固定為 Forgejo `16.0.3+gitea-1.22.0`；開發預設使用官方 mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`。
+- Forgejo 16.0.2 僅保留作為 OpenAPI 與 non-regression 比較基準，不屬於正式支援範圍。
+- 更新的 Forgejo 版本可能可以運作，但使用前必須執行 `scripts/verify_forgejo_openapi.py` 與本地 integration suite；較舊版本不受支援。
 - Server 支援使用 Bearer authentication 的 MCP Streamable HTTP，但尚未驗證所有 MCP clients 的專屬設定格式。
 
 ## 部署
@@ -46,7 +47,7 @@ v0.1.0 是第一個開源版本，已提供完整 Forgejo 開發流程與核心�
 ## 測試
 
 - 已提供 unit、integration 與 frontend quality checks。
-- 真實 App/PostgreSQL/Forgejo development-flow E2E 透過 `scripts/test-full-docker-e2e.sh` 在本地執行，Pull Request CI 也會針對 Forgejo 16.0.2 與 16.0.3 執行完整 suite。
+- 真實 App/PostgreSQL/Forgejo development-flow E2E 透過 `scripts/test-full-docker-e2e.sh` 在本地執行，Pull Request CI 會驗證最低支援版本 Forgejo 16.0.3，並另外以 16.0.2 作為不代表正式支援的 regression reference。
 - Failure injection、security penetration testing 與 backup restore drill 尚未完成。
 
 ## 安全邊界

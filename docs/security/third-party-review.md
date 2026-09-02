@@ -6,7 +6,7 @@ This document is the review entry point for branch `compat/forgejo-16.0.3`. Revi
 
 The branch must preserve:
 
-- Forgejo 16.0.2 and 16.0.3 compatibility;
+- Forgejo 16.0.3 as the minimum supported release, with 16.0.2 retained only as a comparison baseline;
 - MCP Streamable HTTP protocol `2025-06-18`;
 - the existing 50-tool catalog and closed JSON Schemas;
 - the existing Forgejo PAT scope set (`read:user`, `write:organization`, `write:repository`, `write:issue` in E2E);
@@ -47,7 +47,7 @@ npm run build --prefix frontend
 uvx pip-audit
 ```
 
-Run the full disposable stack against both supported Forgejo releases:
+Run the full disposable stack against the minimum supported Forgejo 16.0.3 release. The second command is an optional non-supporting 16.0.2 regression reference:
 
 ```bash
 ./scripts/test-full-docker-e2e.sh
@@ -68,7 +68,7 @@ Also re-run the repository's Gitleaks and detect-secrets scans against both curr
 
 ## Maintainer validation before handoff
 
-- Python: 135 collected, 134 passed, 1 external-credential E2E skipped.
+- Python: 144 collected, 143 passed, 1 external-credential E2E skipped.
 - Ruff check/format and strict MyPy: passed.
 - Frontend ESLint, TypeScript and Vite production build: passed.
 - `pip-audit` and `npm audit`: 0 known vulnerabilities.
@@ -85,5 +85,5 @@ Return each finding with severity, exact file/function/line evidence, exploit pr
 - whether both High findings in the external audit are closed;
 - whether any Critical, High or Medium finding remains;
 - whether Forgejo permissions increased;
-- whether MCP `2025-06-18`, Forgejo 16.0.2 or Forgejo 16.0.3 regressed;
+- whether MCP `2025-06-18` or the supported Forgejo 16.0.3 release regressed, and separately whether the 16.0.2 comparison baseline still passes;
 - whether the branch is suitable for an upstream pull request.

@@ -6,7 +6,7 @@ Forgejo MCP 是一套自架的 [Model Context Protocol](https://modelcontextprot
 
 每位使用者透過自己的 scoped Forgejo personal access token（PAT）操作 Forgejo；管理員則決定哪些 MCP 工具可全域使用、可提供給特定使用者，以及可授權給只顯示一次的 MCP token。
 
-> **v0.1.0 是第一個開源版本。** 核心流程已使用 Forgejo 16.0.2 與 16.0.3 完成驗證，但部分 production deployment 能力尚未完整。正式使用前請先閱讀[已知限制](docs/known-limitations.zh-TW.md)。
+> **v0.1.0 是第一個開源版本。** 最低支援版本為 Forgejo 16.0.3。Forgejo 16.0.2 僅保留作為測試比較基準，不屬於正式支援範圍。部分 production deployment 能力尚未完整；正式使用前請先閱讀[已知限制](docs/known-limitations.zh-TW.md)。
 
 ## 能做什麼
 
@@ -44,7 +44,7 @@ Forgejo MCP 不會取代 Forgejo 本身的授權。工具必須已全域啟用�
 
 ## 系統需求
 
-- 符合已鎖定 Forgejo 16.0.2 或 16.0.3 API contract 的既有 Forgejo instance
+- 符合已鎖定 API contract 的 Forgejo 16.0.3 instance；更新版本必須先完成相容性驗證
 - Docker Engine 與 Docker Compose
 - 用於產生本地 secrets 的 OpenSSL
 
@@ -155,7 +155,7 @@ npm run typecheck --prefix frontend
 npm run build --prefix frontend
 ```
 
-Forgejo 開發預設 image 為官方 mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`，並同時鎖定 16.0.2 與 16.0.3 Swagger checksum。可以使用下列指令驗證支援的 instance contract：
+Forgejo 開發預設 image 與最低支援版本為官方 mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`。專案鎖定支援版本 16.0.3 的 Swagger checksum，並保留 16.0.2 checksum 供歷史比較。可以使用下列指令驗證 instance contract：
 
 ```bash
 uv run python scripts/verify_forgejo_openapi.py https://forgejo.example/swagger.v1.json

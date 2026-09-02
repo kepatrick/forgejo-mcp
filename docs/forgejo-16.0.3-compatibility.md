@@ -2,11 +2,13 @@
 
 ## Executive summary
 
-Forgejo MCP is compatible with both Forgejo 16.0.2 and 16.0.3. The official Swagger documents contain no endpoint-level difference: every path, method, operation ID, parameter, request body and response used by the 50-tool MCP catalog is unchanged.
+Forgejo MCP officially supports Forgejo 16.0.3 as its minimum release. Forgejo 16.0.2 is retained only as the pre-upgrade OpenAPI and non-regression comparison baseline; successful comparison results do not make 16.0.2 a supported deployment target. Later Forgejo releases require compatibility verification before use.
+
+The official Forgejo 16.0.2 and 16.0.3 Swagger documents contain no endpoint-level difference: every path, method, operation ID, parameter, request body and response used by the 50-tool MCP catalog is unchanged.
 
 The only functional schema change is that Forgejo 16.0.3 marks `index`, `owner` and `repo` as required in `IssueMeta`. Forgejo MCP does not consume or emit `IssueMeta`, so no endpoint adapter or generated client change is required.
 
-MCP Streamable HTTP compatibility remains locked by integration and full-stack E2E initialization with protocol version `2025-06-18`. The optional OAuth 2.1 flow is also exercised end to end on both Forgejo releases without changing Forgejo PAT scopes.
+MCP Streamable HTTP compatibility remains locked by integration and full-stack E2E initialization with protocol version `2025-06-18`. The optional OAuth 2.1 flow is exercised end to end on the minimum supported Forgejo 16.0.3 release without changing Forgejo PAT scopes; the 16.0.2 run remains comparison evidence only.
 
 ## Tested artifacts
 
@@ -15,7 +17,7 @@ MCP Streamable HTTP compatibility remains locked by integration and full-stack E
 | 16.0.2 | `data.forgejo.org/forgejo/forgejo:16.0.2-rootless` | `sha256:23ccc146e6dc2cd1f5c5435909baae64db873201717f1726490dae649283e6cd` | `16.0.2+gitea-1.22.0` | `9e94799decc739c31fa68d8dc1b2d7f392e810a088f10b032c9962665398612b` |
 | 16.0.3 | `data.forgejo.org/forgejo/forgejo:16.0.3-rootless` | `sha256:214f4ae63ee78be1e445e58573c88dc7215e72091210852e0df94eaac1a25685` | `16.0.3+gitea-1.22.0` | `f638c2ad8ec38f7f53b5e34ce24506fd142d16c4234bde996a52a1b9ac213b0a` |
 
-Image digests are evidence for the images tested while preparing this report. Runtime verification remains checksum-based on the served Swagger document because registry tags can be republished.
+Image digests are evidence for the images tested while preparing this report. The 16.0.2 row is a comparison artifact, not a support declaration. Runtime verification remains checksum-based on the served Swagger document because registry tags can be republished.
 
 ## Complete Swagger difference list
 
@@ -87,7 +89,7 @@ Validated on 2026-08-31:
 On every pull request, `.github/workflows/forgejo-e2e.yml` runs:
 
 1. the automatic 16.0.2 versus 16.0.3 Swagger comparison;
-2. the complete Docker E2E suite against Forgejo 16.0.2;
-3. the complete Docker E2E suite against Forgejo 16.0.3.
+2. the complete Docker E2E suite against Forgejo 16.0.2 as a non-supporting regression reference;
+3. the complete Docker E2E suite against the minimum supported Forgejo 16.0.3 release.
 
-The Compose development default is Forgejo 16.0.3. Set `FORGEJO_IMAGE=data.forgejo.org/forgejo/forgejo:16.0.2-rootless` to reproduce the compatibility baseline.
+The Compose development default and minimum supported release are Forgejo 16.0.3. Set `FORGEJO_IMAGE=data.forgejo.org/forgejo/forgejo:16.0.2-rootless` only to reproduce the historical comparison baseline.

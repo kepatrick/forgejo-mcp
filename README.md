@@ -6,7 +6,7 @@ Forgejo MCP is a self-hosted [Model Context Protocol](https://modelcontextprotoc
 
 Users connect with their own scoped Forgejo personal access tokens (PATs). Administrators decide which MCP tools are enabled globally, available to each user and granted to each show-once MCP token.
 
-> **v0.1.0 is the initial open-source release.** The core workflow is tested against Forgejo 16.0.2 and 16.0.3, while some production deployment capabilities are not yet complete. Review the [known limitations](docs/known-limitations.md) before production use.
+> **v0.1.0 is the initial open-source release.** The minimum supported Forgejo release is 16.0.3. Forgejo 16.0.2 remains a test-only comparison baseline and is not part of the published support range. Some production deployment capabilities are not yet complete; review the [known limitations](docs/known-limitations.md) before production use.
 
 ## What it provides
 
@@ -44,7 +44,7 @@ Forgejo MCP does not replace Forgejo authorization. A tool is available only whe
 
 ## Requirements
 
-- An existing Forgejo 16.0.2 or 16.0.3 instance compatible with the locked API contract
+- An existing Forgejo 16.0.3 instance compatible with the locked API contract. Later Forgejo releases require compatibility verification before use.
 - Docker Engine with Docker Compose
 - OpenSSL for generating local secrets
 
@@ -144,7 +144,7 @@ Run the disposable full-stack App/PostgreSQL/Forgejo E2E test:
 ./scripts/test-full-docker-e2e.sh
 ```
 
-The default development image is Forgejo 16.0.3. Re-run the same complete E2E against the 16.0.2 compatibility baseline with:
+The default development image and minimum supported release are Forgejo 16.0.3. The 16.0.2 command below is retained only to reproduce the historical non-regression comparison; it does not extend the supported range:
 
 ```bash
 FORGEJO_IMAGE=data.forgejo.org/forgejo/forgejo:16.0.2-rootless ./scripts/test-full-docker-e2e.sh
@@ -162,13 +162,13 @@ npm run typecheck --prefix frontend
 npm run build --prefix frontend
 ```
 
-Forgejo defaults to the official mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`; both 16.0.2 and 16.0.3 Swagger checksums are locked. Verify either supported contract with:
+Forgejo defaults to the official mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`. The supported 16.0.3 Swagger checksum and the 16.0.2 comparison checksum are locked. Verify an instance contract with:
 
 ```bash
 uv run python scripts/verify_forgejo_openapi.py https://forgejo.example/swagger.v1.json
 ```
 
-Launch both supported releases and reproduce the complete Swagger comparison with:
+Launch the 16.0.2 reference and the minimum supported 16.0.3 release to reproduce the complete Swagger comparison with:
 
 ```bash
 ./scripts/test-forgejo-openapi-compatibility.sh

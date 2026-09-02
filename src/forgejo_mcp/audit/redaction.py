@@ -18,8 +18,12 @@ _SENSITIVE_FRAGMENTS = (
 _URL_CREDENTIALS = re.compile(
     r"(?P<scheme>[a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s]+@",
 )
-_AUTHORITY_CREDENTIALS = re.compile(
-    r"(?P<prefix>(?:^|[\s(]))[^/\s:@]+:[^/\s@]+@(?=[^/\s]+(?:/|$))",
+_AUTHORITY_CANDIDATE = re.compile(
+    r"(?P<prefix>(?:^|[\s(/]))(?P<authority>[^/\s]+)/",
+)
+_AUTHORITY_HOST = re.compile(
+    r"(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)"
+    r"(?::[0-9]+)?",
 )
 _CAMEL_CASE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 _TARGET_TEXT_LIMIT = 512
@@ -131,7 +135,23 @@ def _sensitive_key(key: str) -> bool:
 
 def _redact_text(value: str) -> str:
     sanitized = _URL_CREDENTIALS.sub(r"\g<scheme>[REDACTED]@", value)
-    return _AUTHORITY_CREDENTIALS.sub(r"\g<prefix>[REDACTED]@", sanitized)
+    return _AUTHORITY_CANDIDATE.sub(_redact_schemeless_authority, sanitized)
+
+
+def _redact_schemeless_authority(match: re.Match[str]) -> str:
+    authority = match.group("authority")
+    userinfo, separator, host = authority.rpartition("@")
+    username, colon, password = userinfo.partition(":")
+    if (
+        not separator
+        or not colon
+        or not username
+        or not password
+        or "@" in username
+        or _AUTHORITY_HOST.fullmatch(host) is None
+    ):
+        return match.group(0)
+    return f"{match.group('prefix')}[REDACTED]@{host}/"
 
 
 def _bounded_text(value: str, limit: int) -> str:

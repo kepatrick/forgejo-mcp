@@ -580,7 +580,7 @@ v1 不實作也不在 registry 中預留以下工具：
 
 ## 9. 上游 API 版本基準
 
-支援版本鎖定為 Forgejo `16.0.2+gitea-1.22.0` 與 `16.0.3+gitea-1.22.0`；開發測試預設使用 `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`，CI 亦驗證 16.0.2 compatibility baseline。
+最低支援版本鎖定為 Forgejo `16.0.3+gitea-1.22.0`；開發測試預設使用 `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`。CI 亦驗證 16.0.2 compatibility baseline，但該基準不屬於正式支援範圍。
 
 - `tests/contracts/forgejo-v16-openapi.json` 保存 50 個 MCP tools 對應的 method、path、operation ID，以及完整 `/swagger.v1.json` SHA-256。
 - `scripts/verify_forgejo_openapi.py` 驗證實際 instance 的版本、checksum、registry 完整性與每個 operation。

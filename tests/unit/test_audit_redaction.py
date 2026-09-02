@@ -60,6 +60,9 @@ def test_credentials_embedded_in_remote_url_are_redacted_before_persistence() ->
             "remote_with_at": "mirror-bot:part@credential@example.test/repo.git",
             "many_at": f"mirror-bot:{'part@' * 256}many-at-secret@example.test/repo.git",
             "ordinary_text": "meet at 12:30@office",
+            "nested_path": "dir/bot:ghp_leak@host/file",
+            "without_trailing_slash": "user:secret@host",
+            "ordinary_path": "12:30@office/room",
         }
     )
 
@@ -72,6 +75,9 @@ def test_credentials_embedded_in_remote_url_are_redacted_before_persistence() ->
         "remote_with_at": "[REDACTED]@example.test/repo.git",
         "many_at": "[REDACTED]@example.test/repo.git",
         "ordinary_text": "meet at 12:30@office",
+        "nested_path": "dir/[REDACTED]@host/file",
+        "without_trailing_slash": "[REDACTED]@host",
+        "ordinary_path": "12:30@office/room",
     }
     assert "super-secret" not in repr(result.value)
     assert "private-value" not in repr(result.value)
@@ -80,6 +86,8 @@ def test_credentials_embedded_in_remote_url_are_redacted_before_persistence() ->
     assert "slash-secret" not in repr(result.value)
     assert "part@credential" not in repr(result.value)
     assert "many-at-secret" not in repr(result.value)
+    assert "ghp_leak" not in repr(result.value)
+    assert "user:secret" not in repr(result.value)
 
 
 def test_additional_credential_key_names_are_redacted_without_hiding_paths() -> None:
@@ -180,6 +188,22 @@ def test_extract_target_redacts_credentials_and_bounds_text() -> None:
     assert target["ref"] == "/[REDACTED]@example.test/repo.git"
     assert marker not in repr(target)
     assert target["path"] == f"{'x' * 512}…[TRUNCATED]"
+
+
+def test_extract_target_replays_original_redaction_witnesses() -> None:
+    target = extract_target(
+        {
+            "repo": "dir/bot:ghp_leak@host/file",
+            "ref": "user:secret@host",
+            "path": "12:30@office/room",
+        }
+    )
+
+    assert target == {
+        "repo": "dir/[REDACTED]@host/file",
+        "ref": "[REDACTED]@host",
+        "path": "12:30@office/room",
+    }
 
 
 def test_result_summary_counts_git_tree_entries() -> None:

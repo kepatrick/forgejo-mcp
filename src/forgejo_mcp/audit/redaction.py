@@ -19,7 +19,8 @@ _URL_CREDENTIALS = re.compile(
     r"(?P<scheme>[a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s]+@",
 )
 _AUTHORITY_CANDIDATE = re.compile(
-    r"(?P<prefix>(?:^|[\s(/]))(?P<authority>[^/\s]+)/",
+    r"(?<![^\s(/])(?P<authority>(?=[^/\s]*:)(?=[^/\s]*@)[^/\s]+)"
+    r"(?P<terminator>/|$|\s)",
 )
 _AUTHORITY_HOST = re.compile(
     r"(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)"
@@ -148,10 +149,11 @@ def _redact_schemeless_authority(match: re.Match[str]) -> str:
         or not username
         or not password
         or "@" in username
+        or (username.isdecimal() and password.isdecimal())
         or _AUTHORITY_HOST.fullmatch(host) is None
     ):
         return match.group(0)
-    return f"{match.group('prefix')}[REDACTED]@{host}/"
+    return f"[REDACTED]@{host}{match.group('terminator')}"
 
 
 def _bounded_text(value: str, limit: int) -> str:

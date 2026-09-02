@@ -68,7 +68,7 @@ Also re-run the repository's Gitleaks and detect-secrets scans against both curr
 
 ## Maintainer validation before handoff
 
-- Python: 144 collected, 143 passed, 1 external-credential E2E skipped.
+- Python with PostgreSQL: 149 collected, 148 passed, 1 external-credential E2E skipped; without PostgreSQL, 140 passed and 9 database/external tests were skipped.
 - Ruff check/format and strict MyPy: passed.
 - Frontend ESLint, TypeScript and Vite production build: passed.
 - `pip-audit` and `npm audit`: 0 known vulnerabilities.

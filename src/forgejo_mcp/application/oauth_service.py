@@ -6,8 +6,9 @@ import json
 import re
 import socket
 import uuid
+from collections import OrderedDict
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import cast
 from urllib.parse import quote, urlsplit
@@ -30,6 +31,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from forgejo_mcp.application.oauth_revocation import revoke_oauth_family
 from forgejo_mcp.auth.tokens import (
     hash_token,
     mcp_token_prefix,
@@ -62,6 +64,7 @@ SessionFactoryProvider = Callable[[], async_sessionmaker[AsyncSession]]
 AddressResolver = Callable[[str, int], set[str]]
 OAUTH_SCOPE = "mcp:tools"
 _PKCE_PATTERN = re.compile(r"[A-Za-z0-9_-]{43,128}\Z")
+_REFRESH_RECOVERY_CACHE_MAX_ENTRIES = 1024
 
 
 class StoredAuthorizationCode(AuthorizationCode):
@@ -96,6 +99,13 @@ class ConsentDetails:
     default_grant_ttl_days: int
 
 
+@dataclass
+class _RefreshRecoveryEntry:
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    token: OAuthToken | None = None
+    expires_at: datetime | None = None
+
+
 class OAuthService(
     OAuthAuthorizationServerProvider[
         StoredAuthorizationCode,
@@ -121,6 +131,10 @@ class OAuthService(
         self.resource_url = settings.oauth_resource_url
         self.transport = transport
         self.resolver = resolver or _resolve_addresses
+        self._refresh_recovery_entries: OrderedDict[uuid.UUID, _RefreshRecoveryEntry] = (
+            OrderedDict()
+        )
+        self._refresh_recovery_guard = asyncio.Lock()
 
     async def get_client(self, client_id: str) -> OAuthClientInformationFull | None:
         if not client_id or len(client_id) > 2048:
@@ -431,6 +445,22 @@ class OAuthService(
         refresh_token: StoredRefreshToken,
         scopes: list[str],
     ) -> OAuthToken:
+        recovery = await self._refresh_recovery_entry(refresh_token.record_id)
+        async with recovery.lock:
+            return await self._exchange_refresh_token_locked(
+                client,
+                refresh_token,
+                scopes,
+                recovery,
+            )
+
+    async def _exchange_refresh_token_locked(
+        self,
+        client: OAuthClientInformationFull,
+        refresh_token: StoredRefreshToken,
+        scopes: list[str],
+        recovery: _RefreshRecoveryEntry,
+    ) -> OAuthToken:
         async with self.session_factory_provider()() as session:
             record = await session.scalar(
                 select(OAuthRefreshToken)
@@ -449,30 +479,38 @@ class OAuthService(
                 raise TokenError("invalid_grant", "refresh token is invalid")
             if record.rotated_at is not None:
                 reuse_age_seconds = (now - record.rotated_at).total_seconds()
-                if reuse_age_seconds <= self.settings.oauth_refresh_token_reuse_grace_seconds:
-                    token = await self._issue_token_pair(
-                        session,
-                        client_record=client_record,
-                        user_id=record.user_id,
-                        scopes=scopes,
-                        resource=record.resource,
-                        family_id=record.family_id,
-                        refresh_expires_at=record.expires_at,
+                grace_seconds = self.settings.oauth_refresh_token_reuse_grace_seconds
+                if grace_seconds > 0 and reuse_age_seconds <= grace_seconds:
+                    cached = (
+                        recovery.token
+                        if recovery.expires_at is not None and recovery.expires_at >= now
+                        else None
                     )
                     session.add(
                         ManagementAuditEvent(
-                            action="oauth.concurrent_refresh_recovered",
+                            action=(
+                                "oauth.concurrent_refresh_recovered"
+                                if cached is not None
+                                else "oauth.concurrent_refresh_rejected"
+                            ),
                             target_type="oauth_client",
                             target_id=str(record.client_id),
                             details={
-                                "grace_seconds": (
-                                    self.settings.oauth_refresh_token_reuse_grace_seconds
-                                )
+                                "family_id": str(record.family_id),
+                                "user_id": str(record.user_id),
+                                "refresh_token_id": str(record.id),
+                                "grace_seconds": grace_seconds,
+                                "cache_hit": cached is not None,
                             },
                         )
                     )
                     await session.commit()
-                    return token
+                    if cached is None:
+                        raise TokenError(
+                            "invalid_grant",
+                            "concurrent refresh recovery is unavailable",
+                        )
+                    return cached.model_copy(deep=True)
                 await self._revoke_family(session, record.family_id, now)
                 await session.commit()
                 raise TokenError("invalid_grant", "refresh token reuse was detected")
@@ -489,7 +527,38 @@ class OAuthService(
                 refresh_expires_at=record.expires_at,
             )
             await session.commit()
+            recovery.token = token.model_copy(deep=True)
+            recovery.expires_at = now + timedelta(
+                seconds=self.settings.oauth_refresh_token_reuse_grace_seconds
+            )
             return token
+
+    async def _refresh_recovery_entry(
+        self,
+        refresh_token_id: uuid.UUID,
+    ) -> _RefreshRecoveryEntry:
+        async with self._refresh_recovery_guard:
+            now = datetime.now(UTC)
+            for entry_id, entry in tuple(self._refresh_recovery_entries.items()):
+                if (
+                    entry.expires_at is not None
+                    and entry.expires_at < now
+                    and not entry.lock.locked()
+                ):
+                    self._refresh_recovery_entries.pop(entry_id, None)
+            existing = self._refresh_recovery_entries.get(refresh_token_id)
+            if existing is not None:
+                self._refresh_recovery_entries.move_to_end(refresh_token_id)
+                return existing
+            if len(self._refresh_recovery_entries) >= _REFRESH_RECOVERY_CACHE_MAX_ENTRIES:
+                for entry_id, entry in tuple(self._refresh_recovery_entries.items()):
+                    if not entry.lock.locked():
+                        self._refresh_recovery_entries.pop(entry_id, None)
+                        break
+            created = _RefreshRecoveryEntry()
+            if len(self._refresh_recovery_entries) < _REFRESH_RECOVERY_CACHE_MAX_ENTRIES:
+                self._refresh_recovery_entries[refresh_token_id] = created
+            return created
 
     async def load_access_token(self, token: str) -> StoredAccessToken | None:
         if not token.startswith("fmcp_"):
@@ -684,24 +753,7 @@ class OAuthService(
         family_id: uuid.UUID,
         now: datetime,
     ) -> None:
-        token_ids = list(
-            (
-                await session.scalars(
-                    select(OAuthRefreshToken.mcp_token_id).where(
-                        OAuthRefreshToken.family_id == family_id,
-                        OAuthRefreshToken.mcp_token_id.is_not(None),
-                    )
-                )
-            ).all()
-        )
-        await session.execute(
-            update(OAuthRefreshToken)
-            .where(OAuthRefreshToken.family_id == family_id)
-            .values(revoked_at=now)
-        )
-        for token_id in token_ids:
-            if token_id is not None:
-                await self._revoke_mcp_token(session, token_id, now)
+        await revoke_oauth_family(session, family_id, now)
 
     async def _client_by_identifier(
         self,

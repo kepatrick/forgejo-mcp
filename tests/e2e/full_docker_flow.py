@@ -419,24 +419,41 @@ def run_oauth_flow() -> None:
         "OAuth concurrent refresh recovery",
     ).json()
     concurrent_access = concurrent_reuse["access_token"]
-    assert concurrent_access != rotated_access
+    assert concurrent_access == rotated_access
+    assert concurrent_reuse["refresh_token"] == rotated["refresh_token"]
     rotated_mcp = McpClient(rotated_access)
     rotated_mcp.initialize()
     concurrent_mcp = McpClient(concurrent_access)
     concurrent_mcp.initialize()
-    revoked = client.post(
-        "/revoke",
+    oauth_tokens = checked(
+        client.get("/api/me/mcp-tokens"),
+        "List OAuth tokens before dashboard revocation",
+    ).json()
+    dashboard_token = next(
+        token for token in oauth_tokens if token["token_prefix"] == rotated_access[:13]
+    )
+    checked(
+        client.delete(
+            f"/api/me/mcp-tokens/{dashboard_token['id']}",
+            headers=csrf(client),
+        ),
+        "Revoke OAuth family from dashboard",
+    )
+    rejected_refresh = client.post(
+        "/token",
         data={
+            "grant_type": "refresh_token",
             "client_id": client_id,
-            "client_secret": "",
-            "token": rotated_access,
-            "token_type_hint": "access_token",
+            "refresh_token": rotated["refresh_token"],
+            "scope": "mcp:tools",
+            "resource": OAUTH_RESOURCE,
         },
     )
-    assert revoked.status_code == 200
+    assert rejected_refresh.status_code == 400
+    assert rejected_refresh.json()["error"] == "invalid_grant"
     print(
-        "PASS OAuth 2.1 DCR, PKCE, 90-day consent, MCP 2025-06-18, safe concurrent "
-        "refresh recovery, and revocation"
+        "PASS OAuth 2.1 DCR, PKCE, 90-day consent, MCP 2025-06-18, idempotent "
+        "refresh recovery, and dashboard family revocation"
     )
 
 

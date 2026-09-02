@@ -8,7 +8,9 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Fixed
 
-- Recover bounded concurrent OAuth refreshes with independent rotated token pairs so multi-session MCP clients such as Codex do not revoke an otherwise valid long-lived authorization.
+- Make bounded concurrent OAuth refresh recovery idempotent so multi-session MCP clients such as Codex receive the same replacement pair instead of creating durable token-family forks.
+- Revoke the complete OAuth refresh-token family when its active access token is revoked from the User or Admin Dashboard.
+- Redact schemeless URL credentials at path boundaries and end-of-string while preserving ordinary time-like audit text.
 
 ### Added
 
@@ -73,7 +75,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Keep OAuth disabled by default; require exact issuer/resource configuration, public PKCE clients, bounded request/metadata bodies, no CIMD redirects, public DNS destinations, Same-Origin forms and CSRF tokens.
 - Mark OAuth-created MCP tokens explicitly and delete them during migration downgrade so loss of OAuth linkage cannot turn them into valid static Bearer tokens.
 - Bind all OAuth grants to the configured MCP resource, reject every conflicting explicit RFC 8707 resource, and reject confidential-client metadata instead of silently downgrading it to a public client.
-- Reject immediately duplicated refreshes without revoking their family, while retaining family-wide revocation for reuse outside the bounded concurrency grace.
+- Re-serve the first rotated pair for duplicate refreshes inside the bounded concurrency grace; a missing recovery entry fails closed without creating a branch, while reuse outside the grace still revokes the family.
 - Apply exact-allowlist MCP CORS for browser clients, including the required MCP request headers and exposed authentication/session response headers, without enabling credentialed wildcard access.
 - Advertise CIMD client identification only when the deployment has configured an exact HTTPS CIMD origin.
 - Declare read-only `contents` permissions explicitly in every GitHub Actions workflow.

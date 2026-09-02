@@ -26,9 +26,9 @@
 - **Moyenne :** aucun défaut applicatif confirmé laissé sans traitement ; demeurent les risques opérationnels explicitement documentés (résolution DNS Forgejo, pinning immuable, état mémoire mono-réplique et terminaison TLS opérateur).
 - **Permissions :** aucun scope PAT Forgejo, outil MCP, grant MCP ou permission GitHub supplémentaire n'est ajouté par ces correctifs.
 
-### Validation de la branche, actualisée après le correctif de suivi
+### Validation historique de la branche au commit `e53b3fa`
 
-- Python : **144 tests collectés, 143 réussis et 1 E2E à credentials externes ignoré** ; migrations PostgreSQL appliquées sur une base jetable.
+- Python : **135 tests collectés, 134 réussis et 1 E2E à credentials externes ignoré** ; migrations PostgreSQL appliquées sur une base jetable.
 - Qualité : Ruff check/format et MyPy strict réussis ; ESLint, TypeScript et build Vite réussis.
 - Dépendances : `pip-audit` et `npm audit` rapportent **0 vulnérabilité connue**.
 - Analyse statique : Bandit rapporte **0 moyen / 0 élevé** ; ses 24 alertes basses sont des asserts de narrowing ou des littéraux de protocole examinés.
@@ -102,9 +102,9 @@ Les **2 failles HAUTES sont réellement corrigées** (confirmé par attaque, pas
 - L'assouplissement OAuth `resource` reste une décision de compatibilité mono-ressource documentée : une valeur présente mais incorrecte est toujours rejetée et aucun grant, outil ou scope supplémentaire n'est accordé.
 - **Permissions :** aucun scope PAT Forgejo, outil MCP, grant MCP ou permission GitHub supplémentaire n'a été ajouté.
 
-### Validation de la branche après correction finale
+### Validation historique de la branche au commit `e53b3fa`
 
-- Python : **144 tests collectés, 143 réussis et 1 E2E externe ignoré**.
+- Python : **135 tests collectés, 134 réussis et 1 E2E externe ignoré**.
 - Ruff check/format, MyPy strict, ESLint, TypeScript et build Vite : réussis.
 - Docker E2E : les 50 outils, OAuth et MCP `2025-06-18` passent contre Forgejo 16.0.2 et 16.0.3.
 - PostgreSQL : migrations OAuth appliquées avec succès sur une base neuve jetable.
@@ -163,7 +163,68 @@ Les **2 failles HAUTES sont réellement corrigées** (confirmé par attaque, pas
 
 ---
 
-## 🎯 Verdict global
+## 🔁🔁🔁 Troisième contre-audit — plage `e53b3fa..3851931` (2026-09-02/03)
+
+> Note Claude — contre-vérification adverse et postérieure des 4 commits publiés après le second contre-audit : `b8860d8` (clôture des résidus), `aa8187a` (lifetimes OAuth durables), `6c5eed3` (perf découverte d'outils), `3851931` (récupération des refresh concurrents). Témoins exécutés contre le vrai code du service (33 mesures sur les commits fonctionnels, balayage exhaustif des 1 112 064 codepoints pour l'alignement des schémas, RFC 9700 §4.14 téléchargée et confrontée au texte) ; diff intégral relu commit par commit ; pytest/ruff/mypy ré-exécutés (139 unit verts, 148 collectés).
+
+### Intégrité de la plage : ✅ confirmée, 3 réserves de forme
+
+- Aucune dépendance touchée, aucun code suspect, aucun secret, auteur unique, tout poussé (`ls-remote` concordant). Deny-by-default préservé partout.
+- Seules 2 assertions nettes supprimées sur toute la plage, l'une remplacée par un équivalent renforcé — mais la sémantique anti-replay a été assouplie **en deux crans répartis sur deux commits** (aa8187a : rejet sans révocation dans la grâce ; 3851931 : acceptation avec émission), invisible dans le diff cumulé. Non dissimulé (CHANGELOG + OAUTH-005 réécrit + risque résiduel explicite), mais le titre d'aa8187a (« lifetimes ») n'annonce pas le marchepied.
+- Réserves de forme : seconds objets non annoncés par les messages de commit (requalification 16.0.2→16.0.3 dans b8860d8, `path=""` racine dans 6c5eed3 — tous deux au CHANGELOG) ; **réécriture rétroactive des chiffres de validation dans des rapports d'audit datés** (135/134 → 144/143 dans 3 docs, eux-mêmes déjà périmés à HEAD : 148 réels) — incohérence de tenue documentaire, pas de falsification.
+
+### Verdict par commit
+
+| Commit | Verdict | Détail |
+|---|---|---|
+| `b8860d8` résidus | ⚠️ **1 corrigé, 1 RÉFUTÉ** | **Espaces Unicode : réellement corrigé** — alignement schéma↔client prouvé par balayage exhaustif (classe désalignée **vide** ; résiduel ZWSP/fullwidth/segments internes accepté à l'identique des deux côtés, littéral, non exploitable à cette frontière). **Redaction : clôture RÉFUTÉE** — le témoin d'origine `dir/bot:ghp_leak@host/file` **fuit toujours** (le test du commit utilise `/mirror-bot:…` en tête de chaîne, forme qui esquive le constat) ; **régression introduite** : `user:secret@host` sans slash final était redigé avant, fuit maintenant ; faux positifs `12:30@office/room` conservés. La disposition « Corrigé » ci-dessus est fausse sur ses deux moitiés dès qu'on rejoue les témoins du constat. Correctif suggéré : frontière par lookbehind non consommant `(?<![^\s(/])` + terminateur `(?:/|$|\s)`. |
+| `aa8187a` lifetimes | ✅ **SÛR (durcissement), 2 réserves** | Le refresh passait d'une expiry **glissante** (∞ pour un client actif) à une borne **absolue** choisie par l'utilisateur au consentement (1/7/30/90 j, plafond dur 90, validation double côté serveur), héritée à chaque rotation (drift 0 s au témoin), access borné à min(1 h, grant), pas de silent re-auth, migration fail-closed. Réserves : **la révocation au dashboard ne coupe pas le grant** (prouvé : le client re-refresh et l'accès revient — seuls suspension user, révocation de credential et `/revoke` côté client coupent la famille), alors que la page de consentement promet « revoke at any time » ; et le commit introduit discrètement la grâce de 10 s (cran 1 de l'assouplissement). |
+| `6c5eed3` perf | ✅ **SÛR** | Pas de cache, pas de mémoïsation : un snapshot DB par requête, listing ET exécution relisent la base (le piège « sélecteur vérifié, exécution optimisée » n'existe pas). Témoin sur les 5 leviers de révocation : **DENY immédiat, aucune fenêtre de staleness**. Retrait de `_sync_registry` du chemin chaud sans effet (ligne absente = disabled, fail-closed intact). `path=""` verrouillé par `oneOf const ""` sur le seul outil de listing. |
+| `3851931` refresh concurrents | 🟠 **À RISQUE — régression contrôlée de la détection de vol** | Dans la grâce (10 s défaut, max 60), un refresh **déjà tourné** émet une **paire indépendante** au lieu d'être rejeté. Prouvé par exécution : un token volé rejoué ≤ 10 s après la rotation légitime **fork une branche durable** — attaquant et client gardent tous deux des tokens valides jusqu'à la borne du grant (≤ 90 j), replays **illimités** dans la fenêtre (4 branches au témoin), zéro révocation, seuls des events `oauth.concurrent_refresh_recovered` **sans family_id ni user_id** (revue prescrite peu actionnable). La propriété RFC 9700 §4.14.2 (« le double-usage informe le serveur de la compromission ») est vidée **dans la fenêtre** ; hors fenêtre, la révocation de famille tient (branches forkées incluses, prouvé) ; `grace=0` restaure le strict (prouvé). Atténuants : fenêtre d'exploitation étroite, scope/client/révocation vérifiés avant émission, risque documenté comme résiduel. |
+
+### Constats ouverts après troisième contre-audit
+
+1. 🟠 **MOYENNE** — fork indétecté dans la grâce des refresh (`oauth_service.py:450-475`) : rendre la réponse **idempotente** (re-servir la paire de la première rotation — force les deux porteurs sur la même chaîne, donc détection à la rotation suivante) ou plafonner à une récupération par token ; a minima enrichir l'event (`family_id`, `user_id`) et documenter `FMCP_OAUTH_REFRESH_TOKEN_REUSE_GRACE_SECONDS=0` comme profil durci.
+2. 🟠 **MOYENNE** — la révocation dashboard d'un token OAuth ne révoque pas la **famille** : le client re-refresh et revient. Contredit la promesse de gouvernance (« Revocable access ») et la page de consentement. Révoquer la famille depuis le dashboard, ou exposer une vue « autorisations OAuth ».
+3. 🟡 BASSE — motif de redaction : témoin d'origine toujours fuyant + régression sans-slash + faux positifs (couche audit persistée uniquement).
+4. 🟡 BASSE (forme) — tenue documentaire : chiffres de rapports datés réécrits rétroactivement et déjà périmés ; dispositions de clôture co-livrées dans le commit qu'elles clôturent (schéma répété malgré la réserve signalée au tour précédent).
+
+### État après troisième contre-audit
+
+**0 CRITIQUE, 0 HAUTE, 2 MOYENNES rouvertes** (fork de grâce, révocation de famille absente au dashboard) **+ 2 BASSES**. Le socle demeure solide — les durcissements réels (bornes absolues de grant, découverte d'outils sans staleness, alignement Unicode prouvé exhaustivement) sont confirmés par exécution. Mais la trajectoire appelle une vigilance : deux clôtures revendiquées ont maintenant été réfutées par les témoins d'origine (redaction au 2ᵉ tour comme au 3ᵉ), et l'assouplissement anti-replay est arrivé en deux demi-pas sous des titres qui ne l'annonçaient pas. Les prochaines dispositions devraient être vérifiées contre les témoins des constats, pas contre des variantes voisines.
+
+---
+
+## Disposition après le troisième contre-audit
+
+> Cette disposition est postérieure au troisième contre-audit. Elle ne modifie ni ses preuves, ni ses conclusions, ni les chiffres historiques des validations précédentes.
+
+| Constat du troisième contre-audit | Disposition | Correctif et témoin |
+|---|---|---|
+| Moyenne — branches durables lors de refresh concurrents | **Corrigé** | La première rotation conserve sa paire en mémoire pendant la grâce configurée. Un doublon dans le même processus reçoit exactement cette paire ; une entrée absente échoue fermée sans créer de branche et sans révoquer la rotation saine. Après la grâce, la réutilisation révoque toujours toute la famille. Les tests PostgreSQL et Docker rejouent les refresh concurrents et vérifient l'identité des deux réponses. |
+| Moyenne — révocation Dashboard incomplète | **Corrigé** | La révocation d'un access token OAuth depuis le Dashboard utilisateur ou administrateur résout puis révoque atomiquement tous les refresh et access tokens connus de sa famille. Les tests PostgreSQL et Docker prouvent que l'access token et le refresh sont ensuite refusés. |
+| Faible — redaction d'autorités sans schéma | **Corrigé** | Les témoins exacts `dir/bot:ghp_leak@host/file` et `user:secret@host` sont neutralisés. Le texte ordinaire `12:30@office/room` reste lisible. Les témoins sont couverts à la fois dans la redaction récursive et dans `extract_target`. |
+| Faible — chiffres historiques réécrits | **Corrigé** | Les résultats des validations antérieures sont restaurés à leurs valeurs au commit concerné. L'état courant est consigné uniquement ci-dessous, sans réécrire les sections historiques. |
+
+### Validation courante après clôture
+
+- Python sans PostgreSQL : **140 réussis et 9 ignorés**.
+- Python avec PostgreSQL : **149 collectés, 148 réussis et 1 E2E à credentials externes ignoré**.
+- Ruff check/format et MyPy strict : réussis.
+- ESLint, TypeScript et build Vite : réussis.
+- Migrations Alembic sur une base PostgreSQL neuve : réussies.
+- Docker E2E Forgejo 16.0.2 et 16.0.3 : OAuth 90 jours, récupération idempotente des refresh, révocation familiale depuis le Dashboard, MCP `2025-06-18` et les 50 outils réussis.
+- Permissions : aucun scope PAT Forgejo, outil MCP, grant MCP ou droit GitHub supplémentaire.
+
+### Verdict courant
+
+- **Critique : 0 ; Haute : 0 ; Moyenne applicative : 0** constat connu restant dans le périmètre des trois contre-audits.
+- Les contraintes résiduelles restent opérationnelles et documentées : cache de récupération et limiteurs mono-processus, résolution DNS finale des migrations par Forgejo, images/Actions non épinglées par digest/SHA, terminaison TLS et sauvegardes sous responsabilité opérateur.
+- Un déploiement multi-réplique n'est pas pris en charge. Une duplication sans entrée de récupération, notamment après redémarrage ou sur un autre processus, échoue fermée et nécessite un nouveau refresh avec la paire courante.
+
+---
+
+## 🎯 Verdict initial de l'audit, conservé à titre historique
 
 **Aucun malware, aucune backdoor, aucune dépendance piégée.** Code de facture professionnelle, architecture volontairement fail-closed, la plupart des revendications de sécurité sont vérifiées dans le code.
 

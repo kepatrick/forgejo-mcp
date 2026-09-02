@@ -4,6 +4,7 @@ import hashlib
 import json
 import logging
 import os
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
@@ -11,6 +12,7 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 import pytest
 from fastapi.testclient import TestClient
+from mcp.server.auth.provider import TokenError
 from mcp.shared.auth import OAuthToken
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -450,6 +452,19 @@ async def issued_token_expiries(access_token: str, refresh_token: str) -> tuple[
     return access_expiry, refresh_expiry
 
 
+async def issued_token_id(access_token: str) -> uuid.UUID:
+    assert DATABASE_URL is not None
+    engine = create_async_engine(DATABASE_URL)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    async with factory() as session:
+        token_id = await session.scalar(
+            select(McpToken.id).where(McpToken.token_hash == hash_token(access_token))
+        )
+        assert token_id is not None
+    await engine.dispose()
+    return token_id
+
+
 async def concurrent_refresh(client_id: str, refresh_token: str) -> list[tuple[str, str]]:
     assert DATABASE_URL is not None
     engine = create_async_engine(DATABASE_URL)
@@ -467,11 +482,25 @@ async def concurrent_refresh(client_id: str, refresh_token: str) -> list[tuple[s
     )
     assert all(isinstance(issued, OAuthToken) for issued in issued_tokens)
     assert all(issued.refresh_token is not None for issued in issued_tokens)
-    assert len({issued.access_token for issued in issued_tokens}) == 2
-    assert len({issued.refresh_token for issued in issued_tokens}) == 2
+    assert len({issued.access_token for issued in issued_tokens}) == 1
+    assert len({issued.refresh_token for issued in issued_tokens}) == 1
     pairs = [(issued.access_token, str(issued.refresh_token)) for issued in issued_tokens]
     await engine.dispose()
     return pairs
+
+
+async def cold_concurrent_refresh_is_rejected(client_id: str, refresh_token: str) -> None:
+    assert DATABASE_URL is not None
+    engine = create_async_engine(DATABASE_URL)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+    service = OAuthService(lambda: factory, oauth_settings())
+    client = await service.get_client(client_id)
+    assert client is not None
+    loaded = await service.load_refresh_token(client, refresh_token)
+    assert loaded is not None
+    with pytest.raises(TokenError, match="recovery is unavailable"):
+        await service.exchange_refresh_token(client, loaded, ["mcp:tools"])
+    await engine.dispose()
 
 
 async def age_rotated_refresh_token(refresh_token: str, age_seconds: int) -> None:
@@ -585,6 +614,7 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
 
         concurrent_tokens = asyncio.run(concurrent_refresh(client_id, first_refresh))
         (second_access, second_refresh), (parallel_access, parallel_refresh) = concurrent_tokens
+        assert (second_access, second_refresh) == (parallel_access, parallel_refresh)
         assert {second_access, parallel_access}.isdisjoint({first_access})
         assert_mcp_unauthorized(client, first_access)
         initialize_mcp(client, second_access)
@@ -592,6 +622,8 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
         for access, refresh in concurrent_tokens:
             _, concurrent_refresh_expiry = asyncio.run(issued_token_expiries(access, refresh))
             assert concurrent_refresh_expiry == grant_expiry
+        asyncio.run(cold_concurrent_refresh_is_rejected(client_id, first_refresh))
+        initialize_mcp(client, second_access)
 
         asyncio.run(
             age_rotated_refresh_token(
@@ -631,6 +663,34 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
         assert revoked.status_code == 200
         assert_mcp_unauthorized(client, revocable_access)
 
+        dashboard_interaction = start_authorization(client, client_id, verifier)
+        dashboard_code = approve_authorization(client, dashboard_interaction, login=False)
+        dashboard_revocable = exchange_code(client, client_id, verifier, dashboard_code)
+        dashboard_access = str(dashboard_revocable["access_token"])
+        dashboard_refresh = str(dashboard_revocable["refresh_token"])
+        dashboard_token_id = asyncio.run(issued_token_id(dashboard_access))
+        initialize_mcp(client, dashboard_access)
+        csrf = client.cookies.get("fmcp_csrf")
+        assert csrf is not None
+        dashboard_revoked = client.delete(
+            f"/api/me/mcp-tokens/{dashboard_token_id}",
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert dashboard_revoked.status_code == 204
+        assert_mcp_unauthorized(client, dashboard_access)
+        dashboard_refresh_rejected = client.post(
+            "/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": client_id,
+                "refresh_token": dashboard_refresh,
+                "scope": "mcp:tools",
+                "resource": RESOURCE,
+            },
+        )
+        assert dashboard_refresh_rejected.status_code == 400
+        assert dashboard_refresh_rejected.json()["error"] == "invalid_grant"
+
         disable_interaction = start_authorization(client, client_id, verifier)
         disable_code = approve_authorization(client, disable_interaction, login=False)
         disabled_oauth = exchange_code(client, client_id, verifier, disable_code)
@@ -649,6 +709,10 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
 
     audit_text = asyncio.run(audit_payloads())
     assert '"action": "oauth.concurrent_refresh_recovered"' in audit_text
+    assert '"action": "oauth.concurrent_refresh_rejected"' in audit_text
+    assert '"action": "oauth.token_family_revoked_by_dashboard"' in audit_text
+    assert '"family_id"' in audit_text
+    assert '"user_id"' in audit_text
     for secret in {
         code,
         first_access,
@@ -660,6 +724,9 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
         second_code,
         revocable_access,
         str(revocable["refresh_token"]),
+        dashboard_code,
+        dashboard_access,
+        dashboard_refresh,
         disable_code,
         disabled_oauth_access,
         str(disabled_oauth["refresh_token"]),

@@ -111,7 +111,40 @@ The user must:
 
 The administrator can see status and metadata but not PAT or MCP token plaintext.
 
-## 7. Review audit records
+## 7. Optional OAuth 2.1 authorization
+
+OAuth is disabled by default and static Bearer authentication remains available. OAuth does not alter Forgejo PAT scopes or bypass the global/user permission ceiling.
+
+For a public deployment at `https://forge-mcp.example.com`, set:
+
+```dotenv
+FMCP_OAUTH_ENABLED=true
+FMCP_OAUTH_ISSUER_URL=https://forge-mcp.example.com
+FMCP_OAUTH_RESOURCE_URL=https://forge-mcp.example.com/mcp
+FMCP_OAUTH_CIMD_ALLOWED_ORIGINS=[]
+```
+
+The issuer must be the public HTTPS origin without a path. The resource must be the same origin followed by exactly `/mcp`. Keep `FMCP_OAUTH_CIMD_ALLOWED_ORIGINS=[]` for DCR-only operation. If a reviewed client uses an HTTPS URL as its client ID, add only that metadata document's exact origin; wildcards, redirects, private addresses and non-HTTPS fetches are rejected.
+
+Before enabling OAuth:
+
+1. back up PostgreSQL and the credential-encryption key separately;
+2. confirm the reverse proxy exposes the issuer and `/mcp` under the same HTTPS origin;
+3. retain normal CSRF and security-header handling rather than intercepting `/oauth/*`;
+4. add an origin to `FMCP_MCP_ALLOWED_ORIGINS` only if the MCP transport itself sends that browser `Origin` header;
+5. apply the database migration and verify both metadata endpoints;
+6. run a live connection with each intended client before approving it for users.
+
+Useful checks:
+
+```text
+GET /.well-known/oauth-authorization-server
+GET /.well-known/oauth-protected-resource/mcp
+```
+
+Disabling `FMCP_OAUTH_ENABLED` immediately makes OAuth access tokens unusable while leaving historical static Bearer tokens unchanged. A database downgrade deletes OAuth-created MCP access records before removing their linkage, preventing them from becoming static tokens. See [OAuth 2.1 security and operations](security/oauth-2.1.md) for the threat analysis and rollback behavior.
+
+## 8. Review audit records
 
 Tool invocation records include:
 
@@ -127,11 +160,12 @@ Use the request ID and invocation ID to correlate Dashboard records with structu
 
 Audit records show Forgejo MCP activity, but they do not replace Forgejo's own audit and repository history.
 
-## 8. Disable or revoke access
+## 9. Disable or revoke access
 
 Use the narrowest effective response:
 
 - revoke one MCP token when one client or device is affected;
+- revoke an OAuth access token to revoke its complete refresh-token family;
 - remove a token grant when only one capability should be removed;
 - remove a user allowance when the role changes;
 - deactivate the Forgejo credential when its PAT is invalid or exposed;

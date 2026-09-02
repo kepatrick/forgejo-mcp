@@ -12,15 +12,33 @@ You need:
 
 - the Forgejo MCP base URL from your administrator;
 - an active, verified Forgejo credential in the Dashboard;
-- an unexpired MCP token beginning with `fmcp_`;
+- either an OAuth-capable MCP client or an unexpired static MCP token beginning with `fmcp_`;
 - at least one tool granted globally, to your user and to that token;
 - an MCP client that supports Streamable HTTP and custom authorization headers.
 
 See the [user guide](user-guide.md) to create and maintain the credential and token.
 
-## Where to configure the token
+## OAuth 2.1 connection (preferred when supported)
 
-Each user must add the `fmcp_...` token created in the Dashboard to their own MCP client or agent configuration. Put it in the `Authorization` header of the Forgejo MCP server entry:
+Configure only the MCP resource URL in a client that supports OAuth authorization-code discovery:
+
+```text
+https://forgejo-mcp.example/mcp
+```
+
+The server advertises RFC 9728 protected-resource metadata and authorization-server metadata. The client dynamically registers as a public client or supplies an allowlisted Client ID Metadata Document, creates a PKCE S256 challenge, opens the Forgejo MCP login/consent page, and exchanges the one-time code for a short-lived access token and rotating refresh token.
+
+The user signs in with the **local Forgejo MCP Dashboard account** linked to their Forgejo identity. Do not enter the Forgejo PAT in the OAuth page or in the MCP client. The PAT remains encrypted server-side and OAuth cannot add tools: each access token receives only the intersection of globally enabled tools and the user's existing allowance.
+
+Do not construct or paste an `/authorize` URL manually. Values such as `client_id`, `redirect_uri`, `code_challenge`, `state` and `resource` are generated and validated by the MCP client. A placeholder or stale authorization URL normally produces `Not Found`, `invalid_request` or `invalid_grant`.
+
+OAuth access tokens use the same `fmcp_...` opaque format internally, expire automatically, are never placed in query strings, and are not displayed in the Dashboard. Refresh tokens rotate on every use; reuse of an older refresh token revokes the complete authorization family.
+
+Client-specific OAuth behavior changes independently of this server. Generic DCR and allowlisted CIMD are covered by automated tests, including an Anthropic-shaped metadata document, but a named client should be considered production-approved only after its current release has completed a live connection test.
+
+## Static Bearer token connection
+
+For clients without OAuth support, each user adds the show-once `fmcp_...` token created in the Dashboard to their own MCP client or agent configuration. Put it in the `Authorization` header of the Forgejo MCP server entry:
 
 ```json
 {
@@ -122,6 +140,16 @@ Check that:
 - the value starts with `Bearer ` followed by the complete `fmcp_...` token;
 - the token is not expired, disabled or revoked;
 - the client did not place the token in the URL query string.
+
+For OAuth, also confirm that OAuth is enabled, the access token has not expired or been replaced by refresh rotation, and the client sends the exact advertised resource URL.
+
+### OAuth returns `invalid_request`
+
+Confirm that the client uses PKCE S256, its exact registered redirect URI, the single `mcp:tools` scope and the exact `/mcp` resource URL. Missing or different RFC 8707 `resource` values are rejected at both authorization and token exchange.
+
+### OAuth opens the login page but rejects the form
+
+The browser request must originate from the exact configured issuer origin. Restart the flow rather than reusing an old consent URL. Sign in with the local user account, not the administrator account and not the Forgejo account password.
 
 ### The connection succeeds but no tools are listed
 

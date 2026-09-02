@@ -9,7 +9,7 @@ from mcp.server.auth.provider import AccessToken
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from forgejo_mcp.auth.tokens import hash_token, mcp_token_prefix
-from forgejo_mcp.db.models import McpToken, RecordStatus
+from forgejo_mcp.db.models import McpToken, OAuthAccessToken, OAuthRefreshToken, RecordStatus
 from forgejo_mcp.db.repositories import McpTokenRepository
 
 _MCP_TOKEN_PATTERN = re.compile(r"fmcp_[A-Za-z0-9_-]{43}\Z")
@@ -20,6 +20,9 @@ class AuthenticatedMcpToken:
     token_id: uuid.UUID
     user_id: uuid.UUID
     expires_at: datetime | None
+    scopes: tuple[str, ...] = ()
+    resource: str | None = None
+    issuer: str | None = None
 
 
 def valid_mcp_token_format(token: str) -> bool:
@@ -31,7 +34,13 @@ class McpBearerAuthenticator:
         self.session = session
         self.tokens = McpTokenRepository(session)
 
-    async def authenticate(self, plaintext: str) -> AuthenticatedMcpToken | None:
+    async def authenticate(
+        self,
+        plaintext: str,
+        *,
+        oauth_resource_url: str | None = None,
+        oauth_issuer_url: str | None = None,
+    ) -> AuthenticatedMcpToken | None:
         if not valid_mcp_token_format(plaintext):
             return None
 
@@ -50,12 +59,38 @@ class McpBearerAuthenticator:
         if not _active(record, now):
             return None
 
+        oauth_link = await self.session.get(OAuthAccessToken, record.id)
+        scopes: tuple[str, ...] = ()
+        resource = None
+        issuer = None
+        if record.kind == "oauth":
+            if (
+                oauth_link is None
+                or oauth_resource_url is None
+                or oauth_issuer_url is None
+                or oauth_link.revoked_at is not None
+                or oauth_link.resource != oauth_resource_url
+            ):
+                return None
+            refresh = await self.session.get(OAuthRefreshToken, oauth_link.refresh_token_id)
+            if refresh is None or refresh.revoked_at is not None:
+                return None
+            scopes = tuple(refresh.scopes)
+            resource = oauth_link.resource
+            issuer = oauth_issuer_url
+        elif record.kind != "static" or oauth_link is not None:
+            # Fail closed on unknown or internally inconsistent token records.
+            return None
+
         record.last_used_at = now
         await self.session.commit()
         return AuthenticatedMcpToken(
             token_id=record.id,
             user_id=record.user_id,
             expires_at=record.expires_at,
+            scopes=scopes,
+            resource=resource,
+            issuer=issuer,
         )
 
 
@@ -65,25 +100,38 @@ class ForgejoMcpTokenVerifier:
     def __init__(
         self,
         session_factory_provider: Callable[[], async_sessionmaker[AsyncSession]],
+        *,
+        oauth_resource_url: str | None = None,
+        oauth_issuer_url: str | None = None,
     ) -> None:
         self.session_factory_provider = session_factory_provider
+        self.oauth_resource_url = oauth_resource_url
+        self.oauth_issuer_url = oauth_issuer_url
 
     async def verify_token(self, token: str) -> AccessToken | None:
         async with self.session_factory_provider()() as session:
-            authenticated = await McpBearerAuthenticator(session).authenticate(token)
+            authenticated = await McpBearerAuthenticator(session).authenticate(
+                token,
+                oauth_resource_url=self.oauth_resource_url,
+                oauth_issuer_url=self.oauth_issuer_url,
+            )
         if authenticated is None:
             return None
         return AccessToken(
             token="",
             client_id=str(authenticated.token_id),
-            scopes=[],
+            scopes=list(authenticated.scopes),
             expires_at=(
                 int(authenticated.expires_at.timestamp())
                 if authenticated.expires_at is not None
                 else None
             ),
             subject=str(authenticated.user_id),
-            claims={"mcp_token_id": str(authenticated.token_id)},
+            resource=authenticated.resource,
+            claims={
+                "mcp_token_id": str(authenticated.token_id),
+                **({"iss": authenticated.issuer} if authenticated.issuer is not None else {}),
+            },
         )
 
 

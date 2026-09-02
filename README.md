@@ -13,6 +13,7 @@ Users connect with their own scoped Forgejo personal access tokens (PATs). Admin
 - 50 tools for repositories, organization repository creation, migration and pull-mirror management, git trees, branches, commits, labels, milestones, Issues, pull requests, reviews, Actions runs, jobs, logs and artifacts, tags and releases.
 - Global, user and token-level tool authorization in addition to Forgejo's own permissions.
 - Per-user Forgejo identity through a verified, scoped PAT.
+- Optional OAuth 2.1 authorization-code login with PKCE S256, consent, short-lived access tokens, rotating refresh tokens, DCR and allowlisted CIMD.
 - AES-256-GCM encryption for stored PATs and show-once MCP tokens.
 - A web Dashboard for Forgejo configuration, users, permissions and audit records.
 - Redacted invocation auditing, structured logs, health endpoints and Prometheus metrics.
@@ -32,11 +33,11 @@ Forgejo MCP is designed as a governance layer between company AI clients and For
 ## How it works
 
 ```text
-MCP client ──Bearer token──> Forgejo MCP /mcp ──user PAT──> Forgejo API
-                                  │
-Web Dashboard ──admin/user──> permissions, credentials and audit records
-                                  │
-                              PostgreSQL
+MCP client ──OAuth 2.1 or static Bearer──> Forgejo MCP /mcp ──user PAT──> Forgejo API
+                                                │
+Web Dashboard ──admin/user login + consent──> permissions, credentials and audit records
+                                                │
+                                            PostgreSQL
 ```
 
 Forgejo MCP does not replace Forgejo authorization. A tool is available only when it is globally enabled, allowed for the user, granted to the MCP token, and permitted by the user's Forgejo account and PAT.
@@ -86,6 +87,8 @@ Change the bootstrap password immediately. Direct localhost HTTP requires `FMCP_
 
 Production startup also requires `FMCP_FORGEJO_ALLOWED_BASE_URLS`, a JSON list containing the exact trusted Forgejo base URL (for example `["https://git.example.com"]`). This out-of-band pin prevents a Dashboard administrator from redirecting user PAT verification to another server. Browser-based MCP clients must add their exact origins to `FMCP_MCP_ALLOWED_ORIGINS`; regular MCP clients do not send an `Origin` header.
 
+OAuth is disabled by default. Enabling it is a separate deployment decision and does not request or add any Forgejo PAT scope. Set the public HTTPS issuer origin and its exact `/mcp` resource URL; keep the CIMD allowlist empty unless a client actually identifies itself with an HTTPS metadata URL.
+
 For logs, shutdown, clean reset, common startup errors and the optional local Forgejo profile, see [Getting started](docs/getting-started.md).
 
 ## First-time setup
@@ -105,7 +108,7 @@ See the [administrator guide](docs/admin-guide.md) and [user guide](docs/user-gu
 
 ## MCP connection
 
-Forgejo MCP uses authenticated MCP Streamable HTTP:
+Forgejo MCP uses authenticated MCP Streamable HTTP. Clients supporting OAuth 2.1 can connect to the `/mcp` URL and discover the authorization server automatically. Static Bearer tokens remain fully supported:
 
 ```text
 URL:           https://forgejo-mcp.example/mcp
@@ -113,7 +116,7 @@ Transport:     Streamable HTTP
 Authorization: Bearer fmcp_...
 ```
 
-The MCP token is shown only once. Store it in the client's secret storage; query-string tokens are rejected. See [MCP client configuration](docs/mcp-client-configuration.md) for the field mapping, connection checks and troubleshooting guidance.
+OAuth clients use local Forgejo MCP login and explicit consent; they never receive the Forgejo PAT. The static MCP token is shown only once and belongs in the client's secret storage; query-string access tokens are rejected. See [MCP client configuration](docs/mcp-client-configuration.md) for both connection modes.
 
 ## Documentation
 
@@ -123,6 +126,7 @@ The MCP token is shown only once. Store it in the client's secret storage; query
 | Configure Forgejo, users and permissions | [Administrator guide](docs/admin-guide.md) |
 | Create a PAT and MCP token | [User guide](docs/user-guide.md) |
 | Connect an MCP client | [MCP client configuration](docs/mcp-client-configuration.md) |
+| Enable and review OAuth 2.1 | [OAuth 2.1 security and operations](docs/security/oauth-2.1.md) |
 | Review current constraints | [Known limitations](docs/known-limitations.md) |
 | Inspect tool inputs and behavior | [v1 tool catalog](docs/tools/v1-tool-catalog.md) |
 | Review credential handling | [Credential security](docs/security/credentials.md) |

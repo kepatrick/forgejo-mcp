@@ -13,6 +13,7 @@ Forgejo MCP 是一套自架的 [Model Context Protocol](https://modelcontextprot
 - 提供 50 個工具，涵蓋 repository、組織 repository 建立、migration 與 pull mirror 管理、git tree、branch、commit、label、milestone、Issue、pull request、review、Actions run、job、log、artifact、tag 與 release。
 - 在 Forgejo 原有權限之外，增加全域、使用者與 token 三層工具授權。
 - 使用者透過已驗證且限制權限範圍的 Forgejo PAT，以自己的 Forgejo 身分操作。
+- 可選擇啟用 OAuth 2.1 authorization code、PKCE S256、明確 consent、短效 access token 與 rotating refresh token；預設關閉。
 - 使用 AES-256-GCM 加密儲存 PAT，MCP token 只顯示一次。
 - 透過 Web Dashboard 管理 Forgejo 連線、使用者、權限及稽核紀錄。
 - 提供遮蔽敏感資訊的 invocation audit、structured logs、health endpoints 與 Prometheus metrics。
@@ -32,11 +33,11 @@ Forgejo MCP 的定位不只是另一個 Forgejo API wrapper，而是公司 AI cl
 ## 運作方式
 
 ```text
-MCP client ──Bearer token──> Forgejo MCP /mcp ──user PAT──> Forgejo API
-                                  │
-Web Dashboard ──admin/user──> 權限、credential 與 audit records
-                                  │
-                              PostgreSQL
+MCP client ──OAuth 2.1 或 Bearer──> Forgejo MCP /mcp ──user PAT──> Forgejo API
+                                        │
+Web Dashboard ──admin/user login──> 權限、credential 與 audit records
+                                        │
+                                    PostgreSQL
 ```
 
 Forgejo MCP 不會取代 Forgejo 本身的授權。工具必須已全域啟用、允許該使用者使用、授權給該 MCP token，並且使用者的 Forgejo 帳號與 PAT 也有對應權限，才會出現在 MCP client 中。
@@ -86,6 +87,8 @@ curl http://127.0.0.1:8000/health/ready
 
 Production 啟動時也必須設定 `FMCP_FORGEJO_ALLOWED_BASE_URLS`，其值為包含可信 Forgejo base URL 的 JSON 清單（例如 `["https://git.example.com"]`）。這個由部署管理的固定值可防止 Dashboard 管理員把使用者 PAT 驗證導向其他伺服器。以瀏覽器連接 MCP 時，還必須把精確的 origin 加入 `FMCP_MCP_ALLOWED_ORIGINS`；一般 MCP client 不會傳送 `Origin` header。
 
+OAuth 預設關閉；啟用後也不會要求或新增 Forgejo PAT scope。Issuer 必須是公開 HTTPS origin，resource 必須是同一 origin 的 `/mcp`。除非 client 確實使用 CIMD，否則應維持空白 allowlist。
+
 Logs、停止服務、清除資料、常見啟動錯誤，以及選用的本地 Forgejo profile，請參閱[快速入門](docs/getting-started.zh-TW.md)。
 
 ## 初次設定
@@ -105,7 +108,7 @@ Logs、停止服務、清除資料、常見啟動錯誤，以及選用的本地 
 
 ## MCP 連線
 
-Forgejo MCP 使用需要驗證的 MCP Streamable HTTP：
+Forgejo MCP 使用需要驗證的 MCP Streamable HTTP。支援 OAuth 2.1 的 client 可由 `/mcp` 自動 discovery；既有 static Bearer token 仍完整相容：
 
 ```text
 URL:           https://forgejo-mcp.example/mcp
@@ -123,6 +126,7 @@ MCP token 只會顯示一次，請存放在 client 的 secret storage；系統�
 | 設定 Forgejo、使用者與權限 | [管理員指南](docs/admin-guide.zh-TW.md) |
 | 建立 PAT 與 MCP token | [使用者指南](docs/user-guide.zh-TW.md) |
 | 連接 MCP client | [MCP client 設定](docs/mcp-client-configuration.zh-TW.md) |
+| 啟用與審查 OAuth 2.1 | [OAuth 2.1 security and operations](docs/security/oauth-2.1.md) |
 | 確認目前限制 | [已知限制](docs/known-limitations.zh-TW.md) |
 | 查詢工具 input 與行為 | [v1 工具目錄](docs/tools/v1-tool-catalog.md) |
 | 檢視 credential 處理方式 | [Credential security](docs/security/credentials.md) |

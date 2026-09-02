@@ -6,7 +6,7 @@ Forgejo MCP is compatible with both Forgejo 16.0.2 and 16.0.3. The official Swag
 
 The only functional schema change is that Forgejo 16.0.3 marks `index`, `owner` and `repo` as required in `IssueMeta`. Forgejo MCP does not consume or emit `IssueMeta`, so no endpoint adapter or generated client change is required.
 
-MCP Streamable HTTP compatibility remains locked by integration and full-stack E2E initialization with protocol version `2025-06-18`.
+MCP Streamable HTTP compatibility remains locked by integration and full-stack E2E initialization with protocol version `2025-06-18`. The optional OAuth 2.1 flow is also exercised end to end on both Forgejo releases without changing Forgejo PAT scopes.
 
 ## Tested artifacts
 
@@ -76,9 +76,9 @@ Security regression summary: no critical, high, medium or low regression was int
 Validated on 2026-08-31:
 
 - `scripts/test-forgejo-openapi-compatibility.sh`: passed against both official images; 2 locked differences and 0 endpoint changes.
-- Complete Docker E2E with Forgejo 16.0.2: passed; all 50 registered MCP tools executed.
-- Complete Docker E2E with Forgejo 16.0.3: passed; all 50 registered MCP tools executed.
-- PostgreSQL-backed suite: 90 passed, 1 opt-in external-Forgejo test skipped.
+- Complete Docker E2E with Forgejo 16.0.2: passed; OAuth 2.1 and all 50 registered MCP tools executed.
+- Complete Docker E2E with Forgejo 16.0.3: passed; OAuth 2.1 and all 50 registered MCP tools executed.
+- PostgreSQL-backed suite: 104 passed, 1 opt-in external-Forgejo test skipped.
 - Ruff lint and format, mypy, ESLint, TypeScript typecheck and React production build: passed.
 - MCP SDK 1.28.1 reports `2025-06-18` among its supported protocol versions, and both integration and E2E initialization succeed with that exact version.
 

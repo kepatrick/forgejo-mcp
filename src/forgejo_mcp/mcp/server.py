@@ -9,9 +9,11 @@ import jsonschema
 from mcp.server.auth.middleware.auth_context import AuthContextMiddleware, get_access_token
 from mcp.server.auth.middleware.bearer_auth import BearerAuthBackend, RequireAuthMiddleware
 from mcp.server.auth.provider import AccessToken
+from mcp.server.auth.routes import build_resource_metadata_url
 from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from mcp.types import CallToolResult, TextContent, Tool, ToolAnnotations
+from pydantic import AnyHttpUrl, TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
@@ -230,8 +232,19 @@ def build_mcp_runtime(
         stateless=False,
         session_idle_timeout=1800,
     )
-    verifier = ForgejoMcpTokenVerifier(session_factory_provider)
+    verifier = ForgejoMcpTokenVerifier(
+        session_factory_provider,
+        oauth_resource_url=settings.oauth_resource_url if settings.oauth_enabled else None,
+        oauth_issuer_url=settings.oauth_issuer_url if settings.oauth_enabled else None,
+    )
     limiter = MultiScopeRateLimiter(settings.mcp_rate_limit_window_seconds)
+    resource_metadata_url = (
+        build_resource_metadata_url(
+            TypeAdapter(AnyHttpUrl).validate_python(settings.oauth_resource_url)
+        )
+        if settings.oauth_enabled and settings.oauth_resource_url is not None
+        else None
+    )
     route = Route(
         "/mcp",
         endpoint=McpHttpApplication(manager, coordinator, limiter, settings),
@@ -242,7 +255,11 @@ def build_mcp_runtime(
             ),
             Middleware(AuthenticationMiddleware, backend=BearerAuthBackend(verifier)),
             Middleware(AuthContextMiddleware),
-            Middleware(RequireAuthMiddleware, required_scopes=[]),
+            Middleware(
+                RequireAuthMiddleware,
+                required_scopes=[],
+                resource_metadata_url=resource_metadata_url,
+            ),
         ],
     )
     return McpRuntime(server=server, manager=manager, route=route)

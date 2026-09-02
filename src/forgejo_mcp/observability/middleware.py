@@ -22,17 +22,25 @@ class RequestBodyTooLarge(Exception):
 
 
 class RequestBodyLimitMiddleware:
-    def __init__(self, app: AsgiApp, *, max_bytes: int) -> None:
+    def __init__(self, app: AsgiApp, *, max_bytes: int, oauth_max_bytes: int) -> None:
         self.app = app
         self.max_bytes = max_bytes
+        self.oauth_max_bytes = oauth_max_bytes
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or scope.get("path") != "/mcp":
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        path = str(scope.get("path", ""))
+        limit = self.max_bytes if path == "/mcp" else None
+        if path in {"/authorize", "/token", "/register", "/revoke"} or path.startswith("/oauth/"):
+            limit = self.oauth_max_bytes
+        if limit is None:
             await self.app(scope, receive, send)
             return
         content_length = _content_length(scope)
-        if content_length is not None and content_length > self.max_bytes:
-            await self._reject(scope, receive, send)
+        if content_length is not None and content_length > limit:
+            await self._reject(scope, receive, send, path)
             return
         consumed = 0
 
@@ -41,19 +49,29 @@ class RequestBodyLimitMiddleware:
             message = await receive()
             if message["type"] == "http.request":
                 consumed += len(message.get("body", b""))
-                if consumed > self.max_bytes:
+                if consumed > limit:
                     raise RequestBodyTooLarge
             return message
 
         try:
             await self.app(scope, limited_receive, send)
         except RequestBodyTooLarge:
-            await self._reject(scope, receive, send)
+            await self._reject(scope, receive, send, path)
 
-    async def _reject(self, scope: Scope, receive: Receive, send: Send) -> None:
-        HTTP_REQUEST_BODY_REJECTED.labels(route="/mcp").inc()
+    async def _reject(
+        self,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+        path: str,
+    ) -> None:
+        route = "/mcp" if path == "/mcp" else "/oauth/*"
+        HTTP_REQUEST_BODY_REJECTED.labels(route=route).inc()
+        detail = (
+            "MCP request body is too large" if path == "/mcp" else "OAuth request body is too large"
+        )
         response = JSONResponse(
-            {"detail": "MCP request body is too large"},
+            {"detail": detail},
             status_code=413,
         )
         await response(scope, receive, send)
@@ -126,7 +144,12 @@ class SecurityHeadersMiddleware:
                     b"form-action 'self'; object-src 'none'; script-src 'self'; "
                     b"style-src 'self'; img-src 'self' data:; connect-src 'self'",
                 )
-                if path == "/mcp" or path.startswith("/api/"):
+                if (
+                    path == "/mcp"
+                    or path.startswith("/api/")
+                    or path.startswith("/oauth/")
+                    or path in {"/authorize", "/token", "/register", "/revoke"}
+                ):
                     _set_header(headers, b"cache-control", b"no-store")
                     _set_header(headers, b"pragma", b"no-cache")
                 message = {**message, "headers": headers}
@@ -164,6 +187,8 @@ def _route_group(path: str) -> str:
         return path
     if path.startswith("/api/"):
         return "/api/*"
+    if path.startswith("/oauth/") or path in {"/authorize", "/token", "/register", "/revoke"}:
+        return "/oauth/*"
     return "/frontend"
 
 

@@ -1942,9 +1942,7 @@ class ForgejoClient:
                 raise ExternalServiceUnavailable("Forgejo login page is too large")
             marker = PRIVATE_VERSION_PATTERN.search(login_response.text)
             if marker is None:
-                raise ExternalServiceUnavailable(
-                    "Forgejo login page did not advertise a version"
-                )
+                raise ExternalServiceUnavailable("Forgejo login page did not advertise a version")
             private_version = marker.group("version")
             return ForgejoVersion(version=private_version.replace("~", "+", 1))
         try:

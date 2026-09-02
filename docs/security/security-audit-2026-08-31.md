@@ -2,6 +2,8 @@
 
 ## Executive summary
 
+> The optional OAuth 2.1 extension was reviewed separately on 2026-09-02. Its findings, fixes, rollback control and current validation evidence are documented in [OAuth 2.1 security and operations](oauth-2.1.md).
+
 The audit covered commit `d29d13bb21431fe307aca9fef7c0cd96749cd2b6` and the security patch prepared on branch `compat/forgejo-16.0.3`. It found no Critical issue, two High issues, three Medium issues, and three Low issues. All eight findings are fixed by the patch documented here.
 
 The most important issue was a trust-boundary bypass: a local Dashboard administrator could change the Forgejo base URL to a server they controlled and then receive a user's PAT during credential verification. The second High issue allowed a token explicitly granted the repository-migration tool to ask Forgejo to connect to unsafe or local sources.

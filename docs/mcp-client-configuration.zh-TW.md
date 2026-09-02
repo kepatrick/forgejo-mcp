@@ -12,13 +12,27 @@
 
 - 管理員提供的 Forgejo MCP base URL；
 - Dashboard 中有效且已驗證的 Forgejo credential；
-- 尚未到期、以 `fmcp_` 開頭的 MCP token；
+- 支援 OAuth 的 MCP client，或尚未到期、以 `fmcp_` 開頭的 static MCP token；
 - 至少一個已全域啟用、允許該使用者使用，並授權給該 token 的工具；
 - 支援 Streamable HTTP 與自訂 authorization header 的 MCP client。
 
 Credential 與 token 的建立及維護方式請參閱[使用者指南](user-guide.zh-TW.md)。
 
-## Token 要設定在哪裡
+## OAuth 2.1 連線（client 支援時建議使用）
+
+只需在支援 OAuth authorization-code discovery 的 client 設定 MCP resource URL：
+
+```text
+https://forgejo-mcp.example/mcp
+```
+
+Client 會使用 PKCE S256、公開 client registration、Forgejo MCP 本地登入與明確 consent，自動取得短效 access token 與 rotating refresh token。請使用與 Forgejo 身分連結的 **Forgejo MCP 本地帳號** 登入；不要在 OAuth 頁面或 client 輸入 Forgejo PAT。
+
+OAuth 不會增加權限。Access token 只取得「全域啟用工具」與「user allowance」的交集。不要手動組合或貼上 `/authorize` URL；`client_id`、redirect URI、challenge、state 與 resource 應由 client 產生並驗證。
+
+Generic DCR 與 Anthropic-shaped CIMD metadata 已納入自動測試，但每個具名 client 的目前版本仍應完成 live connection test 後才正式核准。
+
+## Static Bearer token 要設定在哪裡
 
 是的，每位使用者都要把自己在 Dashboard 建立的 `fmcp_...` token，加入自己的 MCP client／agent 設定。Token 應放在該 MCP server entry 的 `Authorization` header：
 
@@ -122,6 +136,12 @@ Forgejo MCP 不接受 query-string authentication。Token 必須以 Bearer token
 - Value 以 `Bearer ` 開頭，後方為完整 `fmcp_...` token；
 - Token 尚未到期、停用或撤銷；
 - Client 沒有把 token 放進 URL query string。
+
+OAuth 使用時，還要確認 OAuth 已啟用、access token 沒有因 refresh rotation 被替換，且 client 使用 server 公告的精確 `/mcp` resource URL。
+
+### OAuth 回傳 `invalid_request`
+
+確認 client 使用 PKCE S256、精確註冊的 redirect URI、唯一的 `mcp:tools` scope，以及精確 `/mcp` resource。缺少或不同的 RFC 8707 `resource` 會被拒絕。
 
 ### 連線成功但沒有列出工具
 

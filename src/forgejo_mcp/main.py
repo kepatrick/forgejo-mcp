@@ -23,8 +23,10 @@ from forgejo_mcp.api import (
     users_router,
 )
 from forgejo_mcp.api.errors import application_error_handler
+from forgejo_mcp.api.oauth import create_oauth_routes
 from forgejo_mcp.application.bootstrap_service import bootstrap_admin
 from forgejo_mcp.application.errors import ApplicationError
+from forgejo_mcp.application.oauth_service import OAuthService
 from forgejo_mcp.application.runtime import InvocationCoordinator
 from forgejo_mcp.config import Settings, get_settings
 from forgejo_mcp.db.session import create_engine, create_session_factory
@@ -87,6 +89,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.add_middleware(
         RequestBodyLimitMiddleware,
         max_bytes=resolved_settings.mcp_request_max_bytes,
+        oauth_max_bytes=resolved_settings.oauth_request_max_bytes,
     )
     application.add_middleware(RequestObservabilityMiddleware)
     application.add_middleware(SecurityHeadersMiddleware)
@@ -105,6 +108,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(system_router)
     application.include_router(tool_invocations_admin_router)
     application.include_router(tool_invocations_me_router)
+    if resolved_settings.oauth_enabled:
+        oauth_service = OAuthService(
+            lambda: application.state.db_session_factory,
+            resolved_settings,
+        )
+        application.state.oauth_service = oauth_service
+        application.router.routes.extend(create_oauth_routes(oauth_service, resolved_settings))
     application.router.routes.append(application.state.mcp_runtime.route)
 
     frontend_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"

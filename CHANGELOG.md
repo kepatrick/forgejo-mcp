@@ -8,6 +8,9 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Added
 
+- Optional OAuth 2.1 authorization-code server with PKCE S256, exact redirect registration, RFC 8707 resource binding, RFC 9728 metadata, public-client DCR, allowlisted CIMD, local login and explicit consent.
+- Short-lived OAuth access tokens using the existing MCP permission engine, rotating refresh tokens with family-wide reuse detection/revocation, and one-time authorization codes.
+- PostgreSQL OAuth integration and full Docker E2E coverage for discovery, DCR, login, consent, MCP `2025-06-18`, permission intersection, refresh rotation and revocation on Forgejo 16.0.2 and 16.0.3.
 - Initial Python, React, PostgreSQL, Alembic, and Docker Compose engineering skeleton.
 - Bootstrap Admin authentication with Argon2id passwords, server-side sessions, CSRF protection, login rate limiting, session management, and management audit events.
 - React login and mandatory bootstrap-password change flow.
@@ -57,6 +60,9 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Security
 
+- Keep OAuth disabled by default; require exact issuer/resource configuration, public PKCE clients, bounded request/metadata bodies, no CIMD redirects, public DNS destinations, Same-Origin forms and CSRF tokens.
+- Mark OAuth-created MCP tokens explicitly and delete them during migration downgrade so loss of OAuth linkage cannot turn them into valid static Bearer tokens.
+- Require the exact RFC 8707 MCP resource at token exchange and reject confidential-client metadata instead of silently downgrading it to a public client.
 - Move the PostgreSQL password and application database URL from Docker environment variables to read-only secret files.
 - Pin production Forgejo base URLs out of band so Dashboard administration cannot redirect user PAT verification.
 - Reject unsafe repository migration URLs and private/special migration hosts by default.

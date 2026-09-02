@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
+import base64
+import hashlib
 import os
 import subprocess
 import sys
 import time
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
@@ -15,6 +18,9 @@ FORGEJO_INTERNAL_URL = os.getenv("FMCP_E2E_FORGEJO_INTERNAL_URL", "http://forgej
 ADMIN_PASSWORD = os.environ["FMCP_E2E_ADMIN_PASSWORD"]
 DEVELOPER_PASSWORD = os.environ["FMCP_E2E_DEVELOPER_PASSWORD"]
 REVIEWER_PASSWORD = os.environ["FMCP_E2E_REVIEWER_PASSWORD"]
+DEVELOPER_LOCAL_PASSWORD = "Developer-local-pass-123!"
+OAUTH_RESOURCE = f"{APP_URL}/mcp"
+OAUTH_REDIRECT_URI = "http://127.0.0.1/oauth/callback"
 MCP_PROTOCOL_VERSION = "2025-06-18"
 FORGEJO_PAT_SCOPES = [
     "read:user",
@@ -184,7 +190,7 @@ def provision_dashboard(forgejo_tokens: dict[str, str]) -> dict[str, str]:
 
     mcp_tokens: dict[str, str] = {}
     users = (
-        ("developer-local", "Developer", "developer", "Developer-local-pass-123!"),
+        ("developer-local", "Developer", "developer", DEVELOPER_LOCAL_PASSWORD),
         ("reviewer-local", "Reviewer", "reviewer", "Reviewer-local-pass-123!"),
     )
     for local_username, display_name, forgejo_username, local_password in users:
@@ -262,6 +268,151 @@ def provision_dashboard(forgejo_tokens: dict[str, str]) -> dict[str, str]:
         mcp_tokens[forgejo_username] = created_token["token"]
         print(f"PASS {local_username} invitation, PAT, allowance, and MCP grants")
     return mcp_tokens
+
+
+def run_oauth_flow() -> None:
+    verifier = "docker-oauth-pkce-verifier-which-is-long-enough-0123456789"
+    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode()
+    challenge = challenge.rstrip("=")
+    client = httpx.Client(base_url=APP_URL, timeout=30, follow_redirects=False)
+
+    registration = checked(
+        client.post(
+            "/register",
+            json={
+                "client_name": "Full Docker OAuth E2E",
+                "redirect_uris": [OAUTH_REDIRECT_URI],
+                "token_endpoint_auth_method": "none",
+                "grant_types": ["authorization_code", "refresh_token"],
+                "response_types": ["code"],
+            },
+        ),
+        "OAuth dynamic client registration",
+    ).json()
+    client_id = registration["client_id"]
+    assert registration.get("client_secret") is None
+
+    authorization = client.get(
+        "/authorize",
+        params={
+            "response_type": "code",
+            "client_id": client_id,
+            "redirect_uri": OAUTH_REDIRECT_URI,
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+            "state": "docker-e2e-state",
+            "scope": "mcp:tools",
+            "resource": OAUTH_RESOURCE,
+        },
+    )
+    assert authorization.status_code == 302
+    interaction = parse_qs(urlsplit(authorization.headers["location"]).query)["request"][0]
+    consent = checked(
+        client.get("/oauth/consent", params={"request": interaction}),
+        "OAuth login page",
+    )
+    assert "Sign in to authorize" in consent.text
+    oauth_csrf = client.cookies.get("fmcp_oauth_csrf")
+    assert oauth_csrf is not None
+    login = client.post(
+        "/oauth/login",
+        headers={"Origin": APP_URL},
+        data={
+            "request": interaction,
+            "username": "developer-local",
+            "password": DEVELOPER_LOCAL_PASSWORD,
+            "csrf": oauth_csrf,
+        },
+    )
+    assert login.status_code == 303
+    consent = checked(
+        client.get("/oauth/consent", params={"request": interaction}),
+        "OAuth consent page",
+    )
+    assert "OAuth cannot add permissions" in consent.text
+    dashboard_csrf = client.cookies.get("fmcp_csrf")
+    assert dashboard_csrf is not None
+    approval = client.post(
+        "/oauth/consent",
+        headers={"Origin": APP_URL},
+        data={"request": interaction, "action": "approve", "csrf": dashboard_csrf},
+    )
+    assert approval.status_code == 302
+    callback = parse_qs(urlsplit(approval.headers["location"]).query)
+    assert callback["state"] == ["docker-e2e-state"]
+    assert callback["iss"] == [APP_URL]
+    code = callback["code"][0]
+
+    tokens = checked(
+        client.post(
+            "/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": client_id,
+                "code": code,
+                "redirect_uri": OAUTH_REDIRECT_URI,
+                "code_verifier": verifier,
+                "resource": OAUTH_RESOURCE,
+            },
+        ),
+        "OAuth authorization code exchange",
+    ).json()
+    access_token = tokens["access_token"]
+    refresh_token = tokens["refresh_token"]
+    oauth_mcp = McpClient(access_token)
+    oauth_mcp.initialize()
+    assert {tool["name"] for tool in oauth_mcp.list_tools()} == {tool.name for tool in list_tools()}
+    assert oauth_mcp.call("forgejo_get_current_user", {})["username"] == "developer"
+
+    rotated = checked(
+        client.post(
+            "/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": client_id,
+                "refresh_token": refresh_token,
+                "scope": "mcp:tools",
+                "resource": OAUTH_RESOURCE,
+            },
+        ),
+        "OAuth refresh rotation",
+    ).json()
+    rotated_access = rotated["access_token"]
+    revoked_old = httpx.post(
+        f"{APP_URL}/mcp",
+        timeout=30,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json, text/event-stream",
+            "Content-Type": "application/json",
+        },
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": MCP_PROTOCOL_VERSION,
+                "capabilities": {},
+                "clientInfo": {"name": "revoked-oauth-e2e", "version": "1.0"},
+            },
+        },
+    )
+    assert revoked_old.status_code == 401
+    rotated_mcp = McpClient(rotated_access)
+    rotated_mcp.initialize()
+    revoked = client.post(
+        "/revoke",
+        data={
+            "client_id": client_id,
+            "client_secret": "",
+            "token": rotated_access,
+            "token_type_hint": "access_token",
+        },
+    )
+    assert revoked.status_code == 200
+    print(
+        "PASS OAuth 2.1 DCR, PKCE, login, consent, MCP 2025-06-18, refresh rotation, and revocation"
+    )
 
 
 class McpClient:
@@ -793,6 +944,7 @@ def main() -> None:
     )
     forgejo_tokens = create_forgejo_resources()
     mcp_tokens = provision_dashboard(forgejo_tokens)
+    run_oauth_flow()
     run_mcp_flow(mcp_tokens)
     print("FULL DOCKER MCP DEVELOPMENT FLOW PASSED")
 

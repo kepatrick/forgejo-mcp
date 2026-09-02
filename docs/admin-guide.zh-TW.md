@@ -109,7 +109,22 @@ Least privilege 建議：
 
 管理員可以查看狀態與 metadata，但不能查看 PAT 或 MCP token 明文。
 
-## 7. 檢查稽核紀錄
+## 7. 可選的 OAuth 2.1 authorization
+
+OAuth 預設關閉，既有 static Bearer authentication 不受影響。OAuth 不會改變 Forgejo PAT scope，也不能繞過 global/user permission ceiling。
+
+```dotenv
+FMCP_OAUTH_ENABLED=true
+FMCP_OAUTH_ISSUER_URL=https://forge-mcp.example.com
+FMCP_OAUTH_RESOURCE_URL=https://forge-mcp.example.com/mcp
+FMCP_OAUTH_CIMD_ALLOWED_ORIGINS=[]
+```
+
+Issuer 必須是無 path 的公開 HTTPS origin；resource 必須是同一 origin 後接 `/mcp`。DCR-only 環境請保持 CIMD allowlist 為空。只有經審查且以 HTTPS metadata URL 作為 client ID 的 client，才加入其精確 origin；不支援 wildcard、redirect、private address 或非 HTTPS CIMD fetch。
+
+停用 `FMCP_OAUTH_ENABLED` 會立即使 OAuth access token 無法使用，但不影響 static Bearer token。Database downgrade 會先刪除 OAuth 建立的 MCP access records，再移除 linkage，避免它們被誤認為 static token。完整威脅分析請參閱 [OAuth 2.1 security and operations](security/oauth-2.1.md)。
+
+## 8. 檢查稽核紀錄
 
 Tool invocation records 包含：
 
@@ -125,11 +140,12 @@ Tool invocation records 包含：
 
 Forgejo MCP audit records 用來補充 Forgejo repository history 與 Forgejo 本身的 audit，不是取代它們。
 
-## 8. 停用或撤銷存取
+## 9. 停用或撤銷存取
 
 請採取最小但有效的處置：
 
 - 只有單一 client 或 device 受影響時，撤銷該 MCP token；
+- 撤銷 OAuth access token 時，會同時撤銷整個 refresh-token family；
 - 只需移除一項能力時，移除 token grant；
 - 使用者角色改變時，移除 user allowance；
 - PAT 失效或外洩時，停用 Forgejo credential；

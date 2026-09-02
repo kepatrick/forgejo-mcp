@@ -47,6 +47,67 @@ def test_production_requires_out_of_band_forgejo_url_allowlist() -> None:
     assert not settings.permits_forgejo_base_url("https://attacker.example")
 
 
+def test_production_oauth_requires_consistent_https_urls() -> None:
+    with pytest.raises(ValidationError, match="OAUTH_ISSUER_URL"):
+        Settings(
+            environment="production",
+            forgejo_allowed_base_urls=["https://git.example.test"],
+            oauth_enabled=True,
+        )
+    with pytest.raises(ValidationError, match="must use HTTPS"):
+        Settings(
+            environment="production",
+            forgejo_allowed_base_urls=["https://git.example.test"],
+            oauth_enabled=True,
+            oauth_issuer_url="http://mcp.example.test",
+            oauth_resource_url="http://mcp.example.test/mcp",
+            oauth_cimd_allowed_origins=["https://claude.ai"],
+        )
+    with pytest.raises(ValidationError, match="origin without a path"):
+        Settings(
+            environment="test",
+            oauth_enabled=True,
+            oauth_issuer_url="https://mcp.example.test/oauth",
+            oauth_resource_url="https://mcp.example.test/mcp",
+        )
+    with pytest.raises(ValidationError, match="issuer origin followed by /mcp"):
+        Settings(
+            environment="test",
+            oauth_enabled=True,
+            oauth_issuer_url="https://mcp.example.test",
+            oauth_resource_url="https://other.example.test/mcp",
+        )
+    with pytest.raises(ValidationError, match="CIMD origins must use HTTPS"):
+        Settings(
+            environment="production",
+            forgejo_allowed_base_urls=["https://git.example.test"],
+            oauth_enabled=True,
+            oauth_issuer_url="https://mcp.example.test",
+            oauth_resource_url="https://mcp.example.test/mcp",
+            oauth_cimd_allowed_origins=["http://claude.ai"],
+        )
+    settings = Settings(
+        environment="production",
+        forgejo_allowed_base_urls=["https://git.example.test"],
+        oauth_enabled=True,
+        oauth_issuer_url="HTTPS://MCP.Example.test/",
+        oauth_resource_url="HTTPS://MCP.Example.test/mcp/",
+        oauth_cimd_allowed_origins=["https://CLAUDE.ai:443/"],
+    )
+    assert settings.oauth_issuer_url == "https://mcp.example.test"
+    assert settings.oauth_resource_url == "https://mcp.example.test/mcp"
+    assert settings.oauth_cimd_allowed_origins == ["https://claude.ai"]
+    dcr_only = Settings(
+        environment="production",
+        forgejo_allowed_base_urls=["https://git.example.test"],
+        oauth_enabled=True,
+        oauth_issuer_url="https://mcp.example.test",
+        oauth_resource_url="https://mcp.example.test/mcp",
+        oauth_cimd_allowed_origins=[],
+    )
+    assert dcr_only.oauth_cimd_allowed_origins == []
+
+
 def test_database_url_file_overrides_environment_value(tmp_path: Path) -> None:
     database_url_file = tmp_path / "database_url"
     database_url_file.write_text(

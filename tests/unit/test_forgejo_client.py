@@ -536,6 +536,25 @@ async def test_repository_requests_reject_invalid_inputs_and_not_found() -> None
             owner="bad/owner",
             repo="repo",
         )
+    for owner, repo in ((".", "repo"), ("..", "repo"), ("patrick", "."), ("patrick", "..")):
+        with pytest.raises(ValidationFailed):
+            await client.get_repository(
+                base_url="https://git.example.test",
+                token="pat",
+                verify_tls=True,
+                owner=owner,
+                repo=repo,
+            )
+    for sha in (".", ".."):
+        with pytest.raises(ValidationFailed, match="commit SHA"):
+            await client.get_commit(
+                base_url="https://git.example.test",
+                token="pat",
+                verify_tls=True,
+                owner="patrick",
+                repo="repo",
+                sha=sha,
+            )
     with pytest.raises(ValidationFailed, match="limit"):
         await client.list_repositories(
             base_url="https://git.example.test",

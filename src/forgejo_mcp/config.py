@@ -1,4 +1,5 @@
 from functools import lru_cache
+from ipaddress import ip_network
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
@@ -29,8 +30,10 @@ class Settings(BaseSettings):
     session_ttl_hours: int = Field(default=8, ge=1, le=168)
     cookie_secure: bool | None = None
     allow_insecure_forgejo_http: bool = False
+    allow_unverified_forgejo_tls: bool = False
     forgejo_allowed_base_urls: list[str] = Field(default_factory=list)
     migration_allow_private_hosts: bool = False
+    trusted_proxy_cidrs: list[str] = Field(default_factory=list)
     mcp_request_max_bytes: int = Field(default=2 * 1024 * 1024, ge=1024, le=16 * 1024 * 1024)
     mcp_allowed_origins: list[str] = Field(default_factory=list)
     commit_max_files: int = Field(default=100, ge=1, le=100)
@@ -64,6 +67,17 @@ class Settings(BaseSettings):
     @classmethod
     def validate_mcp_allowed_origins(cls, origins: list[str]) -> list[str]:
         return [normalize_http_origin(origin) for origin in origins]
+
+    @field_validator("trusted_proxy_cidrs")
+    @classmethod
+    def validate_trusted_proxy_cidrs(cls, cidrs: list[str]) -> list[str]:
+        try:
+            normalized = [str(ip_network(cidr.strip(), strict=False)) for cidr in cidrs]
+        except ValueError as error:
+            raise ValueError("trusted proxy CIDRs must be valid IPv4 or IPv6 networks") from error
+        if len(normalized) != len(set(normalized)):
+            raise ValueError("trusted proxy CIDRs must be unique")
+        return normalized
 
     @field_validator("forgejo_allowed_base_urls")
     @classmethod
@@ -125,7 +139,7 @@ class Settings(BaseSettings):
     def permits_forgejo_base_url(self, base_url: str) -> bool:
         """Enforce the deployment pin at every PAT-bearing network boundary."""
         if not self.forgejo_allowed_base_urls:
-            return True
+            return False
         try:
             normalized = _normalize_external_base_url(base_url)
         except ValueError:

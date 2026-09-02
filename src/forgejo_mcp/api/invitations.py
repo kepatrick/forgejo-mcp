@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from forgejo_mcp.api.dependencies import InvitationServiceDep
 from forgejo_mcp.application.errors import ApplicationError
+from forgejo_mcp.auth.client_ip import get_client_ip
 from forgejo_mcp.auth.rate_limit import LoginRateLimiter
 from forgejo_mcp.auth.tokens import hash_token
 
@@ -32,7 +33,7 @@ class InvitationAcceptedResponse(BaseModel):
 
 
 def rate_limit_key(request: Request, token: str) -> str:
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request, request.app.state.settings) or "unknown"
     return f"{client_ip}:{hash_token(token)}"
 
 

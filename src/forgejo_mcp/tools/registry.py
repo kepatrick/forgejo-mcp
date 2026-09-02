@@ -87,8 +87,18 @@ def _page_schema(item_schema: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-_OWNER = {"type": "string", "minLength": 1, "maxLength": 255, "pattern": r"^[^/\x00-\x1f\x7f]+$"}
-_REPO = {"type": "string", "minLength": 1, "maxLength": 255, "pattern": r"^[^/\x00-\x1f\x7f]+$"}
+_OWNER = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 255,
+    "pattern": r"^(?!\.{1,2}$)[^/\x00-\x1f\x7f]+$",
+}
+_REPO = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 255,
+    "pattern": r"^(?!\.{1,2}$)[^/\x00-\x1f\x7f]+$",
+}
 _PAGE = {"type": "integer", "minimum": 1, "maximum": 100000, "default": 1}
 _LIMIT = {"type": "integer", "minimum": 1, "maximum": 100, "default": 30}
 _BRANCH_SCHEMA = _object_schema(
@@ -139,7 +149,12 @@ _COMMIT_DETAIL_SCHEMA = _object_schema(
     },
     [*_COMMIT_REQUIRED, "files", "files_truncated"],
 )
-_REF = {"type": "string", "minLength": 1, "maxLength": 255}
+_REF = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 255,
+    "pattern": r"^(?!\.{1,2}$)[^\x00-\x1f\x7f]+$",
+}
 _FILE_PATH = {"type": "string", "minLength": 1, "maxLength": 1024}
 _NUMBER = {"type": "integer", "minimum": 1}
 _TIMESTAMP = {"type": "string", "format": "date-time"}
@@ -729,7 +744,7 @@ _TOOL_SPECS = (
             {
                 "owner": _OWNER,
                 "repo": _REPO,
-                "sha": {"type": "string", "minLength": 1, "maxLength": 64},
+                "sha": {**_REF, "maxLength": 64},
             },
             ["owner", "repo", "sha"],
         ),

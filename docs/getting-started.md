@@ -33,7 +33,7 @@ For direct access through `http://127.0.0.1:8000`, keep:
 FMCP_COOKIE_SECURE=false
 ```
 
-Set it to `true` when the App is served behind HTTPS. Keep `FMCP_ALLOW_INSECURE_FORGEJO_HTTP=false` for a normal deployment.
+Set it to `true` when the App is served behind HTTPS. Keep both `FMCP_ALLOW_INSECURE_FORGEJO_HTTP=false` and `FMCP_ALLOW_UNVERIFIED_FORGEJO_TLS=false` for a normal deployment. The reference Compose binds the host port to `FMCP_BIND_ADDRESS=127.0.0.1`; change that address only when the network design requires it and TLS/network controls are already in place.
 
 Do not commit `deploy/.env`.
 
@@ -112,7 +112,9 @@ In the Dashboard:
 
 Use an HTTPS base URL without embedded credentials, a query string or a fragment. The App verifies Forgejo through `/api/v1/version`. Signed-in-only Forgejo instances are supported through a bounded, same-origin login-page version fallback that sends no PAT. Continue with the [administrator guide](admin-guide.md).
 
-Before starting a production deployment, set `FMCP_FORGEJO_ALLOWED_BASE_URLS` in `deploy/.env` to a JSON list containing this exact URL. The value is an out-of-band security boundary, not a discovery list.
+Before starting a production deployment, set `FMCP_FORGEJO_ALLOWED_BASE_URLS` in `deploy/.env` to a JSON list containing this exact URL. The value is an out-of-band security boundary, not a discovery list. An empty list permits no Forgejo connection, including in development and test.
+
+If Traefik or another reverse proxy forwards the real client address, set `FMCP_TRUSTED_PROXY_CIDRS` to a JSON list containing only that proxy's exact IPv4/IPv6 networks. Leave it as `[]` when the source IP is not needed. Never trust all networks: untrusted `X-Forwarded-For` values must not control login or OAuth rate-limit keys.
 
 ## 8. Stop or restart
 
@@ -192,6 +194,10 @@ docker compose --env-file deploy/.env -f deploy/compose.yaml logs app
 ### Forgejo verification rejects HTTP
 
 Normal deployments require HTTPS. Use HTTP only for the local test profile and only when `FMCP_ALLOW_INSECURE_FORGEJO_HTTP=true`.
+
+### Forgejo verification rejects disabled TLS verification
+
+Keep certificate verification enabled. A reviewed private-CA exception requires the deployment owner to set `FMCP_ALLOW_UNVERIFIED_FORGEJO_TLS=true` in addition to the Dashboard choice; prefer installing the correct CA trust instead.
 
 ## Next steps
 

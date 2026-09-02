@@ -29,4 +29,4 @@ If only an MCP token is exposed, revoke that token immediately and review its in
 
 ## Logging and audit
 
-PATs and Authorization headers must never be written to application logs, audit records, API responses, browser storage, or exception details. Audit records contain only principal IDs/usernames, lifecycle action, result category, and actor.
+PATs and Authorization headers must never be written to application logs, audit records, API responses, browser storage, or exception details. Management audit records contain only principal IDs/usernames, lifecycle action, result category, and actor. Tool-invocation records retain bounded targets and recursively redacted arguments: sensitive keys and URL user-info are removed, while `changes[].content` is represented only by UTF-8 byte length and SHA-256 digest. Tool results are summarized without file or diff content.

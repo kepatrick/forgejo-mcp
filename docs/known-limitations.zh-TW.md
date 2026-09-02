@@ -14,6 +14,8 @@ v0.1.0 是第一個開源版本，已提供完整 Forgejo 開發流程與核心�
 
 - v0.1.0 只支援 Docker Compose 部署；React Dashboard 已 build 進 App image，不需要另外啟動前端或後端開發 server。
 - 尚未提供正式環境 TLS reverse-proxy 範例。
+- 參考 Compose 預設只把 published ports 綁定在 loopback。任何 non-loopback bind 都需要 operator 提供 TLS 與 network boundary。
+- Container base images 與 GitHub Actions 使用 version tag，尚未固定至 immutable digest/commit SHA；高 assurance deployment 應另外驗證 provenance 並考慮組織層級 pinning。
 - 正式暴露 `/metrics` 前，必須透過 deployment network 或 reverse proxy 限制存取。
 - PostgreSQL backup/restore scripts、credential-key backup procedures 與 restore drill 尚未完成。
 - Upgrade、rollback 與 incident-response runbooks 尚未完成。
@@ -22,7 +24,7 @@ v0.1.0 是第一個開源版本，已提供完整 Forgejo 開發流程與核心�
 ## 擴展與可用性
 
 - v0.1.0 App 設計為單一 replica。
-- MCP 與 login rate-limit state 儲存在記憶體中，不會在 replicas 之間共享。
+- MCP 與 login rate-limit state 有 key 數量上限並會清除過期資料，但仍儲存在記憶體中、restart 後重設，且不會在 replicas 之間共享。
 - Active MCP transport sessions 屬於單一 process，App restart 後 client 必須重新連線。
 - Graceful shutdown 會在設定的 timeout 內等待 active tool invocations，但 host 或 database 被強制中斷時，工作仍可能中止。
 
@@ -44,8 +46,8 @@ v0.1.0 是第一個開源版本，已提供完整 Forgejo 開發流程與核心�
 ## 測試
 
 - 已提供 unit、integration 與 frontend quality checks。
-- 真實 App/PostgreSQL/Forgejo development-flow E2E 透過 `scripts/test-full-docker-e2e.sh` 在本地執行，依 v0.1.0 決策不接入 workflow CI。
-- Failure injection、security penetration testing、backup restore drill 與多版本 Forgejo compatibility testing 尚未完成。
+- 真實 App/PostgreSQL/Forgejo development-flow E2E 透過 `scripts/test-full-docker-e2e.sh` 在本地執行，Pull Request CI 也會針對 Forgejo 16.0.2 與 16.0.3 執行完整 suite。
+- Failure injection、security penetration testing 與 backup restore drill 尚未完成。
 
 ## 安全邊界
 
@@ -53,6 +55,7 @@ v0.1.0 是第一個開源版本，已提供完整 Forgejo 開發流程與核心�
 - 管理員可以控制工具可用性，但無法查看 PAT 或 MCP token 明文。
 - Credential encryption key 遺失後，已儲存的 Forgejo PAT ciphertext 將無法使用；key backup guidance 與 disaster-recovery 工作一併延後。
 - 同時取得 database 與 credential encryption key 可能暴露已儲存的 PAT，因此未來 production deployment 必須分開保護兩者。
+- Repository migration host validation 屬於 defense in depth；最終 DNS resolution 由 Forgejo 執行。必須保留 Forgejo migration allowlist 與 network egress controls，限制 DNS rebinding 或 public name 轉向 private address 的風險。
 
 ## Production-readiness 規劃
 

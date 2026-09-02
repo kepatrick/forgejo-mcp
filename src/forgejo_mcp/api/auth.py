@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 from forgejo_mcp.api.dependencies import AuthServiceDep
 from forgejo_mcp.application.errors import AuthenticationFailed
+from forgejo_mcp.auth.client_ip import get_client_ip
 from forgejo_mcp.auth.passwords import normalize_username
 from forgejo_mcp.auth.rate_limit import LoginRateLimiter
 from forgejo_mcp.auth.session import CSRF_COOKIE, SESSION_COOKIE, CsrfSession, CurrentSession
@@ -102,14 +103,14 @@ async def login(
     service: AuthServiceDep,
 ) -> AccountResponse:
     normalized = normalize_username(payload.username)
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request, request.app.state.settings)
     rate_limit_key = f"{client_ip}:{normalized}"
     _login_limiter.check(rate_limit_key)
     try:
         result = await service.login(
             username=payload.username,
             password=payload.password,
-            client_ip=request.client.host if request.client else None,
+            client_ip=client_ip,
             user_agent=request.headers.get("user-agent"),
             ttl_hours=request.app.state.settings.session_ttl_hours,
         )

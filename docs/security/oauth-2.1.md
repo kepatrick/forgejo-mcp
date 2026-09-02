@@ -21,11 +21,13 @@ The ordinary MCP checks still require an active user, active Forgejo credential,
 - Public clients only; client secrets and confidential authentication methods are rejected.
 - PKCE method is fixed to S256 and verifier challenges are bounded.
 - Registered redirect URIs must use HTTPS, except HTTP loopback callbacks, and are compared exactly by the MCP SDK.
-- The authorization request and both code/refresh exchanges require the exact configured `/mcp` resource.
+- An explicit RFC 8707 resource on authorization and code/refresh exchanges must match the exact configured `/mcp` resource. Clients that omit it are bound to that same resource because this server exposes exactly one OAuth resource.
 - Authorization codes and browser interaction handles are high-entropy, hashed at rest, short-lived and single-use.
 - Access tokens are opaque, hashed at rest and short-lived. Refresh tokens are opaque, hashed at rest, rotate on use and revoke the entire family when reuse is detected.
 - Login and consent require an exact issuer `Origin`, SameSite cookies and CSRF validation. Administrator accounts cannot authorize user MCP access.
 - OAuth bodies and remote metadata responses are bounded. CIMD accepts only explicitly allowlisted HTTPS origins, rejects credentials/query/fragment, validates public DNS results and never follows redirects.
+- CIMD capability metadata is advertised only when at least one exact CIMD origin is configured; DCR-only deployments do not advertise an unavailable client-identification mode.
+- Browser MCP requests require an exact configured origin. The CORS response policy permits only that allowlist, the MCP methods and headers, and exposes only `WWW-Authenticate` and `MCP-Session-Id`; credentials mode and wildcard origins remain disabled.
 - Token values, codes, refresh tokens, passwords, cookies and PATs are excluded from audit details and request logs. Sensitive responses use `no-store`.
 - OAuth tokens carry an explicit database kind. Missing/inconsistent OAuth linkage fails closed. Downgrade deletes every OAuth-created MCP token before removing OAuth tables.
 
@@ -41,7 +43,7 @@ The ordinary MCP checks still require an active user, active Forgejo credential,
 
 **Impact.** The upstream SDK validated the resource during authorization but ignored the `resource` form field during code and refresh exchange. In this single-resource server, issued tokens remained internally bound to the correct resource, but the endpoint did not meet the intended confused-deputy boundary.
 
-**Fix.** `src/forgejo_mcp/api/oauth.py:116-130` requires an exact RFC 8707 resource before delegating to the SDK token handler. Missing and attacker-controlled values are covered by PostgreSQL integration tests.
+**Fix.** `src/forgejo_mcp/api/oauth.py` rejects every explicit RFC 8707 resource other than the configured MCP URL before delegating to the SDK token handler. Omitted values are safely resolved to the server's single configured resource for client compatibility; attacker-controlled values and omission are covered by PostgreSQL integration tests.
 
 ### OAUTH-003 — Low — Confidential client metadata was silently converted to public
 

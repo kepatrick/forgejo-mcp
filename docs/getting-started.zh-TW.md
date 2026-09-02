@@ -33,7 +33,7 @@ cp deploy/compose.example.env deploy/.env
 FMCP_COOKIE_SECURE=false
 ```
 
-App 位於 HTTPS 後方時應改成 `true`。一般部署應維持 `FMCP_ALLOW_INSECURE_FORGEJO_HTTP=false`。
+App 位於 HTTPS 後方時應改成 `true`。一般部署應同時維持 `FMCP_ALLOW_INSECURE_FORGEJO_HTTP=false` 與 `FMCP_ALLOW_UNVERIFIED_FORGEJO_TLS=false`。參考 Compose 會用 `FMCP_BIND_ADDRESS=127.0.0.1` 綁定 host port；只有在 network design 確實需要且 TLS/network controls 已就緒時才更改。
 
 請勿提交 `deploy/.env`。
 
@@ -112,7 +112,9 @@ Bootstrap username 預設為 `admin`；若已在 `deploy/.env` 修改 `FMCP_BOOT
 
 請使用不包含 credential、query string 或 fragment 的 HTTPS base URL。App 會透過 `/api/v1/version` 驗證 Forgejo。後續請參閱[管理員指南](admin-guide.zh-TW.md)。
 
-啟動 production deployment 前，請在 `deploy/.env` 將 `FMCP_FORGEJO_ALLOWED_BASE_URLS` 設為包含此精確 URL 的 JSON 清單。這是由部署管理的安全邊界，不是用於自動探測的清單。
+啟動 production deployment 前，請在 `deploy/.env` 將 `FMCP_FORGEJO_ALLOWED_BASE_URLS` 設為包含此精確 URL 的 JSON 清單。這是由部署管理的安全邊界，不是用於自動探測的清單。空清單不允許任何 Forgejo 連線，development 與 test 也一樣。
+
+若 Traefik 或其他 reverse proxy 會轉送真實 client address，請把 `FMCP_TRUSTED_PROXY_CIDRS` 設成只包含該 proxy 精確 IPv4/IPv6 network 的 JSON 清單。不需要 source IP 時維持 `[]`。絕對不要信任所有 networks，避免不可信的 `X-Forwarded-For` 控制 login 或 OAuth rate-limit key。
 
 ## 8. 停止或重新啟動
 

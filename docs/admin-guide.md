@@ -54,11 +54,14 @@ For normal deployments:
 - do not include credentials, query strings or fragments in the URL;
 - ensure the App can reach the Forgejo API;
 - pin the exact URL out of band with `FMCP_FORGEJO_ALLOWED_BASE_URLS`;
-- keep `FMCP_ALLOW_INSECURE_FORGEJO_HTTP=false`.
+- keep `FMCP_ALLOW_INSECURE_FORGEJO_HTTP=false`;
+- keep `FMCP_ALLOW_UNVERIFIED_FORGEJO_TLS=false`.
 
 HTTP is supported only for the local test profile when explicitly enabled.
 
-Production refuses to start without a non-empty `FMCP_FORGEJO_ALLOWED_BASE_URLS` JSON list. The Dashboard can test and save only URLs in that list. This prevents a compromised local administrator account from redirecting user PAT verification to an attacker-controlled endpoint.
+Production refuses to start without a non-empty `FMCP_FORGEJO_ALLOWED_BASE_URLS` JSON list. In development and test, an empty list also permits no outbound Forgejo connection. The Dashboard can test and save only URLs in the configured list. This prevents a compromised local administrator account from redirecting user PAT verification to an attacker-controlled endpoint.
+
+The reference Compose publishes the App on loopback. Put public deployments behind HTTPS and keep the App on a private Docker network when possible. When a reverse proxy supplies client IPs for login, invitation and OAuth registration limits, configure only its exact networks in `FMCP_TRUSTED_PROXY_CIDRS`. The App ignores `X-Forwarded-For` from every other peer and walks trusted chains from right to left. Do not use `0.0.0.0/0` or enable Uvicorn's unrestricted proxy-header trust.
 
 Repository migration accepts only `http`, `https`, `ssh` and `git` URLs with a host. Local paths, URL credentials, query strings, fragments and private/special hosts are rejected by default. Set `FMCP_MIGRATION_ALLOW_PRIVATE_HOSTS=true` only when a trusted private migration source is required, and retain Forgejo's own migration allow/deny policy.
 
@@ -155,6 +158,8 @@ Tool invocation records include:
 - redacted arguments and extracted target;
 - status, duration and bounded result summary;
 - error classification without credential plaintext.
+
+Credentials embedded in remote URLs are removed before persistence. Multi-file commit contents are represented only by byte length and SHA-256 digest; file content is not retained in invocation arguments.
 
 Use the request ID and invocation ID to correlate Dashboard records with structured application logs.
 

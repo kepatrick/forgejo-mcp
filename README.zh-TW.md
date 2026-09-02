@@ -85,7 +85,9 @@ curl http://127.0.0.1:8000/health/ready
 
 登入後應立刻更換 bootstrap password。直接使用 localhost HTTP 時需要設定 `FMCP_COOKIE_SECURE=false`；前方有 HTTPS 時則應維持 secure cookie。
 
-Production 啟動時也必須設定 `FMCP_FORGEJO_ALLOWED_BASE_URLS`，其值為包含可信 Forgejo base URL 的 JSON 清單（例如 `["https://git.example.com"]`）。這個由部署管理的固定值可防止 Dashboard 管理員把使用者 PAT 驗證導向其他伺服器。以瀏覽器連接 MCP 時，還必須把精確的 origin 加入 `FMCP_MCP_ALLOWED_ORIGINS`；一般 MCP client 不會傳送 `Origin` header。
+Production 啟動時也必須設定 `FMCP_FORGEJO_ALLOWED_BASE_URLS`，其值為包含可信 Forgejo base URL 的 JSON 清單（例如 `["https://git.example.com"]`）。任何環境中的空清單都不允許 Forgejo 連線。這個由部署管理的固定值可防止 Dashboard 管理員把使用者 PAT 驗證導向其他伺服器。請維持 `FMCP_ALLOW_UNVERIFIED_FORGEJO_TLS=false`；關閉 certificate verification 需要額外的 deployment opt-in。以瀏覽器連接 MCP 時，還必須把精確的 origin 加入 `FMCP_MCP_ALLOWED_ORIGINS`；一般 MCP client 不會傳送 `Origin` header。
+
+參考 Compose 預設只在 `127.0.0.1` 發佈 App。Public TLS 應由可信 reverse proxy 終止。若 rate limiting 需要 proxy 傳入的 client IP，請把 `FMCP_TRUSTED_PROXY_CIDRS` 限制為精確的 proxy network；否則 App 會忽略 forwarded headers。
 
 OAuth 預設關閉；啟用後也不會要求或新增 Forgejo PAT scope。Issuer 必須是公開 HTTPS origin，resource 必須是同一 origin 的 `/mcp`。除非 client 確實使用 CIMD，否則應維持空白 allowlist。
 
@@ -130,6 +132,8 @@ MCP token 只會顯示一次，請存放在 client 的 secret storage；系統�
 | 確認目前限制 | [已知限制](docs/known-limitations.zh-TW.md) |
 | 查詢工具 input 與行為 | [v1 工具目錄](docs/tools/v1-tool-catalog.md) |
 | 檢視 credential 處理方式 | [Credential security](docs/security/credentials.md) |
+| 閱讀獨立安全稽核與修復結果 | [External audit, 2026-09-02（法文）](docs/security/audit-externe-2026-09-02.fr.md) |
+| 準備獨立審查 | [Third-party review handoff](docs/security/third-party-review.md) |
 
 ## 開發與驗證
 

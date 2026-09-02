@@ -57,15 +57,26 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Locked both official Swagger checksums and added a reproducible structural comparison; the only 16.0.3 API schema change marks `IssueMeta.index`, `IssueMeta.owner` and `IssueMeta.repo` as required, with no endpoint impact.
 - Replaced broad E2E Forgejo PATs with the explicit existing scope set (`read:user`, `write:organization`, `write:repository`, `write:issue`).
 - Made MCP `2025-06-18` negotiation explicit in integration and Docker E2E coverage.
+- Preserved single-resource OAuth client compatibility when RFC 8707 `resource` is omitted while continuing to reject every explicit resource other than the configured `/mcp` URL.
 
 ### Security
 
 - Keep OAuth disabled by default; require exact issuer/resource configuration, public PKCE clients, bounded request/metadata bodies, no CIMD redirects, public DNS destinations, Same-Origin forms and CSRF tokens.
 - Mark OAuth-created MCP tokens explicitly and delete them during migration downgrade so loss of OAuth linkage cannot turn them into valid static Bearer tokens.
-- Require the exact RFC 8707 MCP resource at token exchange and reject confidential-client metadata instead of silently downgrading it to a public client.
+- Bind all OAuth grants to the configured MCP resource, reject every conflicting explicit RFC 8707 resource, and reject confidential-client metadata instead of silently downgrading it to a public client.
+- Apply exact-allowlist MCP CORS for browser clients, including the required MCP request headers and exposed authentication/session response headers, without enabling credentialed wildcard access.
+- Advertise CIMD client identification only when the deployment has configured an exact HTTPS CIMD origin.
+- Declare read-only `contents` permissions explicitly in every GitHub Actions workflow.
 - Move the PostgreSQL password and application database URL from Docker environment variables to read-only secret files.
 - Pin production Forgejo base URLs out of band so Dashboard administration cannot redirect user PAT verification.
 - Reject unsafe repository migration URLs and private/special migration hosts by default.
 - Enforce an explicit browser `Origin` allowlist on the MCP endpoint and add no-store/CSP/browser hardening headers.
 - Bound Forgejo response bodies while streaming, serialize invitation acceptance with a row lock, and redact credential patterns from all log formats.
 - Upgrade `nanoid` and `cryptography` to patched releases identified by dependency auditing.
+- Upgrade the development-only `pytest` and `pytest-asyncio` toolchain to releases that fix the UNIX temporary-directory advisory CVE-2025-71176.
+- Reject exact `.` and `..` owner, organization, repository and ref segments in both MCP schemas and the Forgejo client so HTTP URL normalization cannot escape the authorized endpoint shape.
+- Make an empty Forgejo base-URL allowlist deny every outbound Forgejo connection in every environment, while production continues to reject empty policy at startup.
+- Require the deployment-level `FMCP_ALLOW_UNVERIFIED_FORGEJO_TLS` opt-in before the Dashboard can disable Forgejo certificate verification.
+- Remove credentials embedded in remote URLs from invocation arguments and replace multi-file commit contents with byte counts and SHA-256 digests before audit persistence.
+- Trust forwarded client IPs only from exact `FMCP_TRUSTED_PROXY_CIDRS`, resolve chains from right to left, disable Uvicorn's implicit proxy-header parsing in Compose, and bound/purge in-memory rate-limit key tables.
+- Bind the reference App and test Forgejo host ports to loopback by default, with an explicit App bind-address override for reviewed deployments.

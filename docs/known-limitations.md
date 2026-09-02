@@ -14,6 +14,8 @@ v0.1.0 is the initial open-source release. It provides the complete Forgejo deve
 
 - v0.1.0 supports Docker Compose deployment; the React Dashboard is built into the App image, so separate frontend and backend development servers are not part of the operator workflow.
 - A production TLS reverse-proxy example is not included in v0.1.0.
+- The reference Compose binds published ports to loopback by default. Any non-loopback bind requires an operator-provided TLS and network boundary.
+- Container base images and GitHub Actions are version-tagged rather than locked to immutable digests/commit SHAs; verify provenance and consider organization-level pinning for a higher-assurance deployment.
 - `/metrics` must be restricted by deployment networking or a reverse proxy before production exposure.
 - PostgreSQL backup/restore scripts, credential-key backup procedures and restore drills are deferred.
 - Upgrade, rollback and incident-response runbooks are deferred.
@@ -22,7 +24,7 @@ v0.1.0 is the initial open-source release. It provides the complete Forgejo deve
 ## Scaling and availability
 
 - The App is designed for a single replica in v0.1.0.
-- MCP and login rate-limit state is held in memory and is not shared across replicas.
+- MCP and login rate-limit state is bounded and expired keys are purged, but state is held in memory, resets on restart and is not shared across replicas.
 - Active MCP transport sessions are process-local and clients must reconnect after an App restart.
 - Graceful shutdown drains active tool invocations within a configured timeout, but a forced host or database failure can still interrupt work.
 
@@ -53,6 +55,7 @@ v0.1.0 is the initial open-source release. It provides the complete Forgejo deve
 - Administrators can control tool availability but cannot inspect PAT or MCP token plaintext.
 - Loss of the credential encryption key makes stored Forgejo PAT ciphertext unusable; key backup guidance is deferred with the disaster-recovery work.
 - Possession of both the database and credential encryption key may expose stored PATs, so a future production deployment must protect them separately.
+- Repository migration host validation is defense in depth: Forgejo performs the final DNS resolution. Retain Forgejo's migration allowlist and network egress controls to contain DNS rebinding or public-name-to-private-address changes.
 
 ## Planned production-readiness work
 

@@ -26,7 +26,7 @@ Credential 與 token 的建立及維護方式請參閱[使用者指南](user-gui
 https://forgejo-mcp.example/mcp
 ```
 
-Client 會使用 PKCE S256、公開 client registration、Forgejo MCP 本地登入與明確 consent，自動取得短效 access token 與 rotating refresh token。請使用與 Forgejo 身分連結的 **Forgejo MCP 本地帳號** 登入；不要在 OAuth 頁面或 client 輸入 Forgejo PAT。
+Client 會使用 PKCE S256、公開 client registration、Forgejo MCP 本地登入與明確 consent，自動取得短效 access token 與 rotating refresh token。只有 deployment 至少設定一個精確 CIMD origin 時，server 才會公告 CIMD 支援；allowlist 為空時仍可使用 DCR。請使用與 Forgejo 身分連結的 **Forgejo MCP 本地帳號** 登入；不要在 OAuth 頁面或 client 輸入 Forgejo PAT。
 
 OAuth 不會增加權限。Access token 只取得「全域啟用工具」與「user allowance」的交集。不要手動組合或貼上 `/authorize` URL；`client_id`、redirect URI、challenge、state 與 resource 應由 client 產生並驗證。
 
@@ -137,11 +137,11 @@ Forgejo MCP 不接受 query-string authentication。Token 必須以 Bearer token
 - Token 尚未到期、停用或撤銷；
 - Client 沒有把 token 放進 URL query string。
 
-OAuth 使用時，還要確認 OAuth 已啟用、access token 沒有因 refresh rotation 被替換，且 client 使用 server 公告的精確 `/mcp` resource URL。
+OAuth 使用時，還要確認 OAuth 已啟用，且 access token 沒有因 refresh rotation 被替換。如果 client 傳送 RFC 8707 `resource` parameter，其值必須是 server 公告的精確 `/mcp` URL。
 
 ### OAuth 回傳 `invalid_request`
 
-確認 client 使用 PKCE S256、精確註冊的 redirect URI、唯一的 `mcp:tools` scope，以及精確 `/mcp` resource。缺少或不同的 RFC 8707 `resource` 會被拒絕。
+確認 client 使用 PKCE S256、精確註冊的 redirect URI與唯一的 `mcp:tools` scope。明確提供的 RFC 8707 `resource` 必須是 server 公告的精確 `/mcp` URL；省略 resource 也受支援，因為本 server 只有一個固定 MCP resource，且所有 token 都會綁定至該 resource。
 
 ### 連線成功但沒有列出工具
 

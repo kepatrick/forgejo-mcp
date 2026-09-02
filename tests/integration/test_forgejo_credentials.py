@@ -92,6 +92,7 @@ async def credential_lifecycle(key_file: Path) -> None:
 
     settings = Settings(
         environment="test",
+        forgejo_allowed_base_urls=["https://git.example.test"],
         credential_encryption_key_file=key_file,
         credential_encryption_key_version=1,
     )

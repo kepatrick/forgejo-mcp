@@ -23,7 +23,7 @@ def _connection(token: str, repo: str) -> dict[str, object]:
     return {
         "base_url": FORGEJO_URL.rstrip("/"),
         "token": token,
-        "verify_tls": FORGEJO_URL.startswith("https://"),
+        "verify_tls": True,
         "owner": DEVELOPER,
         "repo": repo,
     }

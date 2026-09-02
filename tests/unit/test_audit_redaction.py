@@ -1,3 +1,5 @@
+import hashlib
+
 from forgejo_mcp.audit.redaction import extract_target, redact_arguments, summarize_result
 
 
@@ -45,6 +47,64 @@ def test_migration_credentials_are_redacted_but_upstream_remains_auditable() -> 
     }
     assert "password-value" not in repr(result.value)
     assert "token-value" not in repr(result.value)
+
+
+def test_credentials_embedded_in_remote_url_are_redacted_before_persistence() -> None:
+    result = redact_arguments(
+        {
+            "clone_addr": "https://mirror-bot:super-secret@example.test/repo.git",
+            "description": "mirror from ssh://deploy:private-value@example.test/repo.git",
+            "multiple_at": "https://user@nested-secret@example.test/repo.git",
+        }
+    )
+
+    assert result.value == {
+        "clone_addr": "https://[REDACTED]@example.test/repo.git",
+        "description": "mirror from ssh://[REDACTED]@example.test/repo.git",
+        "multiple_at": "https://[REDACTED]@example.test/repo.git",
+    }
+    assert "super-secret" not in repr(result.value)
+    assert "private-value" not in repr(result.value)
+    assert "nested-secret" not in repr(result.value)
+
+
+def test_additional_credential_key_names_are_redacted_without_hiding_paths() -> None:
+    result = redact_arguments(
+        {
+            "api_key": "api-secret",
+            "private_key": "private-secret",
+            "passwd": "password-secret",
+            "path": "src/private_key_loader.py",
+        }
+    )
+
+    assert result.value == {
+        "api_key": "[REDACTED]",
+        "private_key": "[REDACTED]",
+        "passwd": "[REDACTED]",
+        "path": "src/private_key_loader.py",
+    }
+
+
+def test_commit_change_content_is_replaced_by_size_and_digest() -> None:
+    content = "FORGEJO_TOKEN=must-not-be-persisted\n"
+    result = redact_arguments(
+        {
+            "owner": "patrick",
+            "changes": [
+                {"operation": "create", "path": ".env", "content": content},
+                {"operation": "delete", "path": "old.txt"},
+            ],
+        }
+    )
+
+    assert result.value["changes"][0]["content"] == {
+        "redacted": True,
+        "bytes": len(content.encode("utf-8")),
+        "sha256": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+    }
+    assert "must-not-be-persisted" not in repr(result.value)
+    assert result.truncated is True
 
 
 def test_redaction_truncates_large_text_and_extracts_safe_target() -> None:

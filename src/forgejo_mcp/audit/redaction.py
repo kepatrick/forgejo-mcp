@@ -1,15 +1,22 @@
 import hashlib
 import json
+import re
 from dataclasses import dataclass
 from typing import Any
 
 _SENSITIVE_FRAGMENTS = (
     "authorization",
+    "api_key",
     "cookie",
     "credential",
     "password",
+    "passwd",
+    "private_key",
     "secret",
     "token",
+)
+_URL_CREDENTIALS = re.compile(
+    r"(?P<scheme>[a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s]+@",
 )
 _TARGET_FIELDS = (
     "organization",
@@ -37,20 +44,35 @@ class RedactionResult:
 def redact_arguments(arguments: dict[str, Any], *, text_limit: int = 4096) -> RedactionResult:
     truncated = False
 
-    def redact(value: Any, key: str | None = None) -> Any:
+    def redact(value: Any, key: str | None = None, path: tuple[str, ...] = ()) -> Any:
         nonlocal truncated
         if key is not None and _sensitive_key(key):
             return "[REDACTED]"
         if isinstance(value, dict):
             return {
-                str(child_key): redact(child_value, str(child_key))
+                str(child_key): redact(
+                    child_value,
+                    str(child_key),
+                    (*path, str(child_key)),
+                )
                 for child_key, child_value in value.items()
             }
         if isinstance(value, list):
-            return [redact(item) for item in value]
-        if isinstance(value, str) and len(value) > text_limit:
-            truncated = True
-            return f"{value[:text_limit]}…[TRUNCATED]"
+            return [redact(item, path=path) for item in value]
+        if isinstance(value, str):
+            if path == ("changes", "content"):
+                content_bytes = value.encode("utf-8")
+                truncated = True
+                return {
+                    "redacted": True,
+                    "bytes": len(content_bytes),
+                    "sha256": hashlib.sha256(content_bytes).hexdigest(),
+                }
+            sanitized = _URL_CREDENTIALS.sub(r"\g<scheme>[REDACTED]@", value)
+            if len(sanitized) > text_limit:
+                truncated = True
+                return f"{sanitized[:text_limit]}…[TRUNCATED]"
+            return sanitized
         if value is None or isinstance(value, str | int | float | bool):
             return value
         return "[UNSUPPORTED VALUE]"

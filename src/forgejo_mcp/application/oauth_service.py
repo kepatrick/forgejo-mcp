@@ -168,7 +168,7 @@ class OAuthService(
     ) -> str:
         if client.client_id is None:
             raise AuthorizeError("invalid_request", "client ID is missing")
-        if params.resource != self.resource_url:
+        if params.resource is not None and params.resource != self.resource_url:
             raise AuthorizeError("invalid_request", "resource must identify this MCP server")
         if not _PKCE_PATTERN.fullmatch(params.code_challenge):
             raise AuthorizeError("invalid_request", "PKCE S256 challenge is invalid")

@@ -52,11 +52,14 @@ MCP client 可以使用該工具
 - URL 不得包含 credential、query string 或 fragment；
 - 確保 App 可以連到 Forgejo API；
 - 用 `FMCP_FORGEJO_ALLOWED_BASE_URLS` 在 Dashboard 之外固定精確 URL；
-- 維持 `FMCP_ALLOW_INSECURE_FORGEJO_HTTP=false`。
+- 維持 `FMCP_ALLOW_INSECURE_FORGEJO_HTTP=false`；
+- 維持 `FMCP_ALLOW_UNVERIFIED_FORGEJO_TLS=false`。
 
 只有明確啟用的本地測試 profile 才允許 HTTP。
 
-Production 在 `FMCP_FORGEJO_ALLOWED_BASE_URLS` JSON 清單為空時會拒絕啟動。Dashboard 只能測試與儲存清單內的 URL，藉此防止本地管理員帳號受侵後將 PAT 驗證導向攻擊者控制的 endpoint。
+Production 在 `FMCP_FORGEJO_ALLOWED_BASE_URLS` JSON 清單為空時會拒絕啟動；development 與 test 的空清單同樣不允許任何 outbound Forgejo 連線。Dashboard 只能測試與儲存設定清單內的 URL，藉此防止本地管理員帳號受侵後將 PAT 驗證導向攻擊者控制的 endpoint。
+
+參考 Compose 預設只在 loopback 發佈 App。Public deployment 應放在 HTTPS reverse proxy 後方，並盡可能讓 App 留在 private Docker network。若 login、invitation 與 OAuth registration 的 rate limit 需要 proxy 提供 client IP，只能把 proxy 的精確 network 加入 `FMCP_TRUSTED_PROXY_CIDRS`。其他 peer 傳來的 `X-Forwarded-For` 會被忽略；請勿使用 `0.0.0.0/0` 或啟用 Uvicorn unrestricted proxy-header trust。
 
 Repository migration 只接受帶 host 的 `http`、`https`、`ssh` 與 `git` URL。預設會拒絕本地路徑、URL credential、query string、fragment，以及 private/special host。只有在必須使用可信的私有 migration source 時才設定 `FMCP_MIGRATION_ALLOW_PRIVATE_HOSTS=true`，並維持 Forgejo 自身的 migration allow/deny policy。
 
@@ -139,6 +142,8 @@ Tool invocation records 包含：
 可使用 request ID 與 invocation ID，將 Dashboard records 和 structured application logs 關聯起來。
 
 Forgejo MCP audit records 用來補充 Forgejo repository history 與 Forgejo 本身的 audit，不是取代它們。
+
+Remote URL 中的 credential 會在 persistence 前移除。Multi-file commit 的內容只會記錄 byte length 與 SHA-256 digest；invocation arguments 不會保留 file content。
 
 ## 9. 停用或撤銷存取
 

@@ -175,21 +175,29 @@ def register_client(client: TestClient) -> str:
     return str(payload["client_id"])
 
 
-def start_authorization(client: TestClient, client_id: str, verifier: str) -> str:
+def start_authorization(
+    client: TestClient,
+    client_id: str,
+    verifier: str,
+    *,
+    include_resource: bool = True,
+) -> str:
     challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode()
     challenge = challenge.rstrip("=")
+    params = {
+        "response_type": "code",
+        "client_id": client_id,
+        "redirect_uri": REDIRECT_URI,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+        "state": "state-bound-to-client",
+        "scope": "mcp:tools",
+    }
+    if include_resource:
+        params["resource"] = RESOURCE
     response = client.get(
         "/authorize",
-        params={
-            "response_type": "code",
-            "client_id": client_id,
-            "redirect_uri": REDIRECT_URI,
-            "code_challenge": challenge,
-            "code_challenge_method": "S256",
-            "state": "state-bound-to-client",
-            "scope": "mcp:tools",
-            "resource": RESOURCE,
-        },
+        params=params,
         follow_redirects=False,
     )
     assert response.status_code == 302
@@ -270,17 +278,26 @@ def approve_authorization(
     return callback_parameters["code"][0]
 
 
-def exchange_code(client: TestClient, client_id: str, verifier: str, code: str) -> dict[str, Any]:
+def exchange_code(
+    client: TestClient,
+    client_id: str,
+    verifier: str,
+    code: str,
+    *,
+    include_resource: bool = True,
+) -> dict[str, Any]:
+    data = {
+        "grant_type": "authorization_code",
+        "client_id": client_id,
+        "code": code,
+        "redirect_uri": REDIRECT_URI,
+        "code_verifier": verifier,
+    }
+    if include_resource:
+        data["resource"] = RESOURCE
     response = client.post(
         "/token",
-        data={
-            "grant_type": "authorization_code",
-            "client_id": client_id,
-            "code": code,
-            "redirect_uri": REDIRECT_URI,
-            "code_verifier": verifier,
-            "resource": RESOURCE,
-        },
+        data=data,
     )
     assert response.status_code == 200
     assert response.headers["cache-control"] == "no-store"
@@ -376,7 +393,7 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
         assert resource_metadata.json()["resource"] == RESOURCE
 
         client_id = register_client(client)
-        interaction = start_authorization(client, client_id, verifier)
+        interaction = start_authorization(client, client_id, verifier, include_resource=False)
         code = approve_authorization(client, interaction, login=True)
         replayed_consent = client.post(
             "/oauth/consent",
@@ -390,18 +407,6 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
         )
         assert replayed_consent.status_code == 400
 
-        missing_resource = client.post(
-            "/token",
-            data={
-                "grant_type": "authorization_code",
-                "client_id": client_id,
-                "code": code,
-                "redirect_uri": REDIRECT_URI,
-                "code_verifier": verifier,
-            },
-        )
-        assert missing_resource.status_code == 400
-        assert missing_resource.json()["error"] == "invalid_request"
         wrong_resource = client.post(
             "/token",
             data={
@@ -415,7 +420,7 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
         )
         assert wrong_resource.status_code == 400
         assert wrong_resource.json()["error"] == "invalid_request"
-        tokens = exchange_code(client, client_id, verifier, code)
+        tokens = exchange_code(client, client_id, verifier, code, include_resource=False)
 
         replay = client.post(
             "/token",
@@ -463,7 +468,6 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
                 "client_id": client_id,
                 "refresh_token": first_refresh,
                 "scope": "mcp:tools",
-                "resource": RESOURCE,
             },
         )
         assert rotated.status_code == 200

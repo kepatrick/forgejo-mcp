@@ -86,6 +86,31 @@ def test_registry_contains_stable_default_disabled_tool_spec() -> None:
 
 
 @pytest.mark.parametrize(
+    "arguments",
+    [
+        {"owner": ".", "repo": "repo"},
+        {"owner": "..", "repo": "repo"},
+        {"owner": "owner", "repo": "."},
+        {"owner": "owner", "repo": ".."},
+    ],
+)
+def test_repository_tool_schema_rejects_dot_segments(arguments: dict[str, str]) -> None:
+    validator = jsonschema.Draft202012Validator(get_tool("forgejo_get_repository").input_schema)
+
+    assert list(validator.iter_errors(arguments))
+
+
+@pytest.mark.parametrize("sha", [".", ".."])
+def test_ref_tool_schema_rejects_dot_segments(sha: str) -> None:
+    validator = jsonschema.Draft202012Validator(get_tool("forgejo_get_commit").input_schema)
+
+    assert any(
+        list(error.path) == ["sha"]
+        for error in validator.iter_errors({"owner": "owner", "repo": "repo", "sha": sha})
+    )
+
+
+@pytest.mark.parametrize(
     ("failed_check", "reason"),
     [
         ("token_valid", "token_invalid"),

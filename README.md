@@ -14,7 +14,7 @@ Users connect with their own scoped Forgejo personal access tokens (PATs). Admin
 - Global, user and token-level tool authorization in addition to Forgejo's own permissions.
 - Per-user Forgejo identity through a verified, scoped PAT.
 - Optional OAuth 2.1 authorization-code login with PKCE S256, consent, short-lived access tokens, rotating refresh tokens, DCR and allowlisted CIMD.
-- AES-256-GCM encryption for stored PATs and show-once MCP tokens.
+- AES-256-GCM encryption for stored PATs, with high-entropy MCP tokens shown once and stored only as hashes.
 - A web Dashboard for Forgejo configuration, users, permissions and audit records.
 - Redacted invocation auditing, structured logs, health endpoints and Prometheus metrics.
 
@@ -85,7 +85,9 @@ Open <http://127.0.0.1:8000> and sign in with:
 
 Change the bootstrap password immediately. Direct localhost HTTP requires `FMCP_COOKIE_SECURE=false`; secure cookies should remain enabled behind HTTPS.
 
-Production startup also requires `FMCP_FORGEJO_ALLOWED_BASE_URLS`, a JSON list containing the exact trusted Forgejo base URL (for example `["https://git.example.com"]`). This out-of-band pin prevents a Dashboard administrator from redirecting user PAT verification to another server. Browser-based MCP clients must add their exact origins to `FMCP_MCP_ALLOWED_ORIGINS`; regular MCP clients do not send an `Origin` header.
+Production startup also requires `FMCP_FORGEJO_ALLOWED_BASE_URLS`, a JSON list containing the exact trusted Forgejo base URL (for example `["https://git.example.com"]`). An empty list permits no Forgejo connection in any environment. This out-of-band pin prevents a Dashboard administrator from redirecting user PAT verification to another server. Keep `FMCP_ALLOW_UNVERIFIED_FORGEJO_TLS=false`; disabling certificate verification requires a separate deployment opt-in. Browser-based MCP clients must add their exact origins to `FMCP_MCP_ALLOWED_ORIGINS`; regular MCP clients do not send an `Origin` header.
+
+The reference Compose publishes the App on `127.0.0.1` by default. Terminate public TLS at a trusted reverse proxy. If proxy-derived client IPs are needed for rate limiting, set `FMCP_TRUSTED_PROXY_CIDRS` to only the exact proxy network; forwarded headers are otherwise ignored.
 
 OAuth is disabled by default. Enabling it is a separate deployment decision and does not request or add any Forgejo PAT scope. Set the public HTTPS issuer origin and its exact `/mcp` resource URL; keep the CIMD allowlist empty unless a client actually identifies itself with an HTTPS metadata URL.
 
@@ -131,6 +133,8 @@ OAuth clients use local Forgejo MCP login and explicit consent; they never recei
 | Inspect tool inputs and behavior | [v1 tool catalog](docs/tools/v1-tool-catalog.md) |
 | Review credential handling | [Credential security](docs/security/credentials.md) |
 | Review Forgejo 16.0.3 evidence | [Forgejo 16.0.3 compatibility report](docs/forgejo-16.0.3-compatibility.md) |
+| Read the independent security audit and remediation | [External audit, 2026-09-02 (French)](docs/security/audit-externe-2026-09-02.fr.md) |
+| Prepare an independent review | [Third-party review handoff](docs/security/third-party-review.md) |
 
 ## Development and verification
 

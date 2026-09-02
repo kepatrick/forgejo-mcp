@@ -4,6 +4,10 @@
 
 > The optional OAuth 2.1 extension was reviewed separately on 2026-09-02. Its findings, fixes, rollback control and current validation evidence are documented in [OAuth 2.1 security and operations](oauth-2.1.md).
 
+> The current branch disclosure scan, privacy review, final validation commands and independent-review checklist are maintained in the [third-party review handoff](third-party-review.md).
+
+> An independent Claude review on 2026-09-02 challenged two conclusions in this document and found additional audit/deployment weaknesses. Its original evidence and the remediation disposition are preserved in the [external audit report](audit-externe-2026-09-02.fr.md). In particular, the follow-up now rejects dot segments across repository/ref parameters and redacts invocation content before persistence.
+
 The audit covered commit `d29d13bb21431fe307aca9fef7c0cd96749cd2b6` and the security patch prepared on branch `compat/forgejo-16.0.3`. It found no Critical issue, two High issues, three Medium issues, and three Low issues. All eight findings are fixed by the patch documented here.
 
 The most important issue was a trust-boundary bypass: a local Dashboard administrator could change the Forgejo base URL to a server they controlled and then receive a user's PAT during credential verification. The second High issue allowed a token explicitly granted the repository-migration tool to ask Forgejo to connect to unsafe or local sources.
@@ -55,9 +59,9 @@ Automated checks included the full Python test suite, Ruff, MyPy, frontend lint/
 
 **Baseline evidence.** The MCP route had bearer authentication and session-owner binding but no `Origin` check before authentication. MCP's HTTP security guidance requires validating browser origins to mitigate DNS rebinding and unintended cross-origin invocation.
 
-**Impact.** A browser environment holding or injecting an MCP bearer credential could be induced to issue requests from an untrusted origin. Lack of CORS and bearer requirements limited ordinary drive-by exploitation, but did not satisfy the MCP transport boundary.
+**Impact.** A browser environment holding or injecting an MCP bearer credential could be induced to issue requests from an untrusted origin. The absence of permissive CORS and the bearer requirement limited ordinary drive-by exploitation, but did not satisfy the MCP transport boundary.
 
-**Fix.** `McpOriginValidationMiddleware` runs before bearer authentication in `src/forgejo_mcp/mcp/server.py:238-245`. Origin normalization and exact matching are implemented at `src/forgejo_mcp/mcp/server.py:258-270` and `src/forgejo_mcp/config.py:78-100`. Requests without `Origin` remain valid for native MCP clients; browser clients require an explicit `FMCP_MCP_ALLOWED_ORIGINS` entry. Wildcards are unsupported.
+**Fix.** `McpOriginValidationMiddleware` runs before bearer authentication in `src/forgejo_mcp/mcp/server.py`. Origin normalization and exact matching are implemented in the same module and `src/forgejo_mcp/config.py`. Requests without `Origin` remain valid for native MCP clients; browser clients require an explicit `FMCP_MCP_ALLOWED_ORIGINS` entry. The adjacent CORS middleware permits only the configured origins, MCP methods and request headers, exposes only the authentication and MCP session response headers, and keeps credentials mode disabled. Wildcards are unsupported.
 
 **False-positive notes.** This is defense in depth for the current native-client use case, not evidence of a leaked bearer token.
 
@@ -120,8 +124,8 @@ Automated checks included the full Python test suite, Ruff, MyPy, frontend lint/
 | SSRF / remote URL validation | SEC-001 and SEC-002 fixed; redirect and egress residuals documented |
 | Forgejo PAT leakage | SEC-001 fixed; encrypted AES-256-GCM storage remains at `src/forgejo_mcp/credentials/cipher.py:26-76` |
 | MCP token leakage | No plaintext persistence found; hashed storage/show-once design retained; SEC-006/007 add defense in depth |
-| Permission bypass | No bypass found; all six call-time checks remain fail-closed at `src/forgejo_mcp/authorization/tools.py:20-32` |
-| Path traversal | No exploitable traversal found; repository paths reject `..`, are URL-encoded, and ZIP entries are never extracted |
+| Permission bypass | The six call-time checks remain fail-closed; the external audit found a URL-normalization bypass of endpoint granularity through exact `.`/`..` parameters, now rejected in both MCP schemas and the Forgejo client |
+| Path traversal | The earlier conclusion was incomplete: file paths rejected `..`, but owner/repository/ref segments did not. Exact dot segments are now rejected before URL construction; ZIP entries are never extracted |
 | JSON-RPC injection | No injection found; SDK parsing plus closed JSON Schemas and manual call-time validation reject unknown fields/types |
 | MCP tool attacks | SEC-003/004 fixed; body limits, per-token/user rate limits, session credential binding and output bounds retained |
 | FollowRedirect | Safe: `follow_redirects=False` at `src/forgejo_mcp/forgejo/client.py:1822-1827`, with explicit redirect rejection at line 1865 |
@@ -129,23 +133,26 @@ Automated checks included the full Python test suite, Ruff, MyPy, frontend lint/
 | Deserialization | SEC-004 fixed; JSON and ZIP inputs are bounded, ZIP content stays in memory and is never written/extracted |
 | Race conditions | SEC-005 fixed; in-flight MCP calls retain normal start-time authorization semantics |
 | Secret storage | No defect found: PAT AES-GCM nonces/AAD, hashed high-entropy MCP/session/invitation tokens, and read-only secret mounts are appropriate |
-| Credential logging | SEC-006 fixed; audit arguments were already recursively redacted and results content-free |
+| Credential logging | SEC-006 fixed; follow-up redaction also removes URL user-info and replaces `changes[].content` with size plus SHA-256 before audit persistence |
 
 ## Residual risks and deployment requirements
 
 - DNS names used for repository migration resolve in Forgejo, not necessarily in the MCP container. Keep Forgejo migration policy and network egress controls enabled.
 - `FMCP_MIGRATION_ALLOW_PRIVATE_HOSTS=true` weakens SEC-002's application-side protection and must be restricted to the disposable E2E profile or a reviewed internal source.
-- `FMCP_ALLOW_INSECURE_FORGEJO_HTTP=true` or `verify_tls=false` permits interception of PAT-bearing requests and is not suitable for production.
+- `FMCP_ALLOW_INSECURE_FORGEJO_HTTP=true` permits interception of PAT-bearing requests and is not suitable for production. `verify_tls=false` additionally requires `FMCP_ALLOW_UNVERIFIED_FORGEJO_TLS=true`; prefer installing the correct CA instead.
+- Rate-limit state is bounded and purged but remains process-local, resets on restart and is not shared across replicas. Forwarded IPs are accepted only from `FMCP_TRUSTED_PROXY_CIDRS`.
+- Reference images and GitHub Actions are pinned by version tags rather than immutable digests/commit SHAs; higher-assurance deployments should apply organization provenance and pinning policy.
 - Possession of both PostgreSQL data and the credential-encryption key can recover active PATs. Back up and authorize those assets separately.
 - Revoking a token or grant does not cancel a Forgejo request already in flight; it prevents subsequent authenticated requests.
 
 ## Validation evidence
 
-- Python unit/integration suite: pass.
+- Python unit/integration suite: 120 passed; the separate external-credential E2E was skipped as designed.
 - Ruff check/format and strict MyPy: pass.
 - Frontend ESLint, TypeScript and production build: pass.
 - `npm audit`: 0 vulnerabilities after lock update.
 - `pip-audit`: 0 vulnerabilities after lock update.
 - Docker Compose configuration: valid with the required production URL pin.
-- Forgejo E2E: full tool suite against 16.0.2 and 16.0.3, including login, repositories, branches, commits, pull requests, issues, releases, files, search and webhooks.
+- Forgejo E2E: all 50 tools against 16.0.2 and 16.0.3, including login, repositories, branches, commits, pull requests, issues, releases, files, search, webhooks, Actions, OAuth and MCP `2025-06-18`.
+- Secrets: Gitleaks found no leak in the worktree or 14-commit history; detect-secrets candidates were reviewed as fixtures, placeholders, examples or checksums.
 - Permissions: no new PAT scopes; GitHub Actions remains `contents: read`; no new MCP capability or grant.

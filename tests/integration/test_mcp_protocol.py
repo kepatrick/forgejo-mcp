@@ -298,6 +298,7 @@ def test_mcp_initialize_list_and_call(tmp_path: Path, monkeypatch: pytest.Monkey
         Settings(
             environment="test",
             database_url=DATABASE_URL,
+            forgejo_allowed_base_urls=["https://git.example.test"],
             credential_encryption_key_file=key_file,
         )
     )

@@ -27,7 +27,10 @@ async def test_generic_client_dispatch_does_not_collide_with_method_argument() -
             return "pat"
 
     service = object.__new__(ForgejoToolService)
-    service.settings = Settings(environment="test")
+    service.settings = Settings(
+        environment="test",
+        forgejo_allowed_base_urls=["https://git.example.test"],
+    )
     service.instances = FakeInstances()  # type: ignore[assignment]
     service.credentials = FakeCredentials()  # type: ignore[assignment]
 

@@ -26,7 +26,7 @@ Configure only the MCP resource URL in a client that supports OAuth authorizatio
 https://forgejo-mcp.example/mcp
 ```
 
-The server advertises RFC 9728 protected-resource metadata and authorization-server metadata. The client dynamically registers as a public client or supplies an allowlisted Client ID Metadata Document, creates a PKCE S256 challenge, opens the Forgejo MCP login/consent page, and exchanges the one-time code for a short-lived access token and rotating refresh token.
+The server advertises RFC 9728 protected-resource metadata and authorization-server metadata. The client dynamically registers as a public client or supplies an allowlisted Client ID Metadata Document, creates a PKCE S256 challenge, opens the Forgejo MCP login/consent page, and exchanges the one-time code for a short-lived access token and rotating refresh token. CIMD support is advertised only when the deployment has configured at least one exact CIMD origin; DCR remains available when that allowlist is empty.
 
 The user signs in with the **local Forgejo MCP Dashboard account** linked to their Forgejo identity. Do not enter the Forgejo PAT in the OAuth page or in the MCP client. The PAT remains encrypted server-side and OAuth cannot add tools: each access token receives only the intersection of globally enabled tools and the user's existing allowance.
 
@@ -141,11 +141,11 @@ Check that:
 - the token is not expired, disabled or revoked;
 - the client did not place the token in the URL query string.
 
-For OAuth, also confirm that OAuth is enabled, the access token has not expired or been replaced by refresh rotation, and the client sends the exact advertised resource URL.
+For OAuth, also confirm that OAuth is enabled and the access token has not expired or been replaced by refresh rotation. If the client sends an RFC 8707 `resource` parameter, it must be the exact advertised `/mcp` URL.
 
 ### OAuth returns `invalid_request`
 
-Confirm that the client uses PKCE S256, its exact registered redirect URI, the single `mcp:tools` scope and the exact `/mcp` resource URL. Missing or different RFC 8707 `resource` values are rejected at both authorization and token exchange.
+Confirm that the client uses PKCE S256, its exact registered redirect URI and the single `mcp:tools` scope. An explicit RFC 8707 `resource` value must be the exact advertised `/mcp` URL; omission is supported because this authorization server exposes one fixed MCP resource and binds every issued token to it.
 
 ### OAuth opens the login page but rejects the form
 

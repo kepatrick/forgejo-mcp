@@ -2233,6 +2233,7 @@ def _ref_value(value: str, label: str, *, max_length: int = 255) -> str:
     normalized = value.strip()
     if (
         not normalized
+        or normalized in {".", ".."}
         or len(normalized) > max_length
         or any(ord(character) < 32 or ord(character) == 127 for character in normalized)
     ):
@@ -2258,6 +2259,7 @@ def _repository_name(value: str, label: str = "repository") -> str:
     normalized = value.strip()
     if (
         not normalized
+        or normalized in {".", ".."}
         or len(normalized) > 255
         or "/" in normalized
         or any(ord(character) < 32 or ord(character) == 127 for character in normalized)

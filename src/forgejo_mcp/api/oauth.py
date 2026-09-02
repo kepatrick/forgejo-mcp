@@ -26,6 +26,7 @@ from forgejo_mcp.api.auth import set_auth_cookies
 from forgejo_mcp.application.auth_service import AuthService
 from forgejo_mcp.application.errors import AuthenticationFailed
 from forgejo_mcp.application.oauth_service import OAUTH_SCOPE, OAuthService
+from forgejo_mcp.auth.client_ip import get_client_ip
 from forgejo_mcp.auth.rate_limit import LoginRateLimiter, MultiScopeRateLimiter
 from forgejo_mcp.auth.session import CSRF_COOKIE, get_current_session
 from forgejo_mcp.auth.tokens import hash_token, new_token
@@ -56,7 +57,7 @@ def create_oauth_routes(service: OAuthService, settings: Settings) -> list[Route
                 "token_endpoint_auth_methods_supported": ["none"],
                 "revocation_endpoint_auth_methods_supported": ["none"],
                 "code_challenge_methods_supported": ["S256"],
-                "client_id_metadata_document_supported": True,
+                "client_id_metadata_document_supported": bool(settings.oauth_cimd_allowed_origins),
                 "authorization_response_iss_parameter_supported": True,
             },
             headers={"Cache-Control": "public, max-age=3600"},
@@ -75,7 +76,7 @@ def create_oauth_routes(service: OAuthService, settings: Settings) -> list[Route
         )
 
     async def register(request: Request) -> Response:
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = get_client_ip(request, settings) or "unknown"
         decision = registration_limiter.check(
             [("oauth-registration", client_ip, settings.oauth_registration_rate_limit_requests)]
         )
@@ -119,9 +120,8 @@ def create_oauth_routes(service: OAuthService, settings: Settings) -> list[Route
         # or refreshed access token to this exact MCP resource before exchange.
         form = await request.form()
         resource = form.get("resource")
-        if not isinstance(resource, str) or not hmac.compare_digest(
-            resource,
-            service.resource_url,
+        if resource is not None and (
+            not isinstance(resource, str) or not hmac.compare_digest(resource, service.resource_url)
         ):
             return _token_error("resource must identify this MCP server")
         return cast(Response, await token_handler.handle(request))
@@ -206,7 +206,7 @@ def create_oauth_routes(service: OAuthService, settings: Settings) -> list[Route
                 _message_page("Authorization request unavailable", "Start the connection again."),
                 400,
             )
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = get_client_ip(request, settings)
         rate_limit_key = f"{client_ip}:{username.casefold()}"
         _oauth_login_limiter.check(rate_limit_key)
         async with request.app.state.db_session_factory() as session:
@@ -215,7 +215,7 @@ def create_oauth_routes(service: OAuthService, settings: Settings) -> list[Route
                 result = await auth.login(
                     username=username,
                     password=password,
-                    client_ip=request.client.host if request.client else None,
+                    client_ip=client_ip,
                     user_agent=request.headers.get("user-agent"),
                     ttl_hours=settings.session_ttl_hours,
                 )

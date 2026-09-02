@@ -564,18 +564,19 @@ async def test_repository_requests_reject_invalid_inputs_and_not_found() -> None
             limit=101,
             order_by="name",
         )
-    with pytest.raises(ValidationFailed, match="path"):
-        await client.list_commits(
-            base_url="https://git.example.test",
-            token="pat",
-            verify_tls=True,
-            owner="patrick",
-            repo="repo",
-            ref=None,
-            path="../secret",
-            page=1,
-            limit=30,
-        )
+    for invalid_path in ("../secret", "./README.md", "src/./module.py"):
+        with pytest.raises(ValidationFailed, match="path"):
+            await client.list_commits(
+                base_url="https://git.example.test",
+                token="pat",
+                verify_tls=True,
+                owner="patrick",
+                repo="repo",
+                ref=None,
+                path=invalid_path,
+                page=1,
+                limit=30,
+            )
     with pytest.raises(NotFound, match="repository"):
         await client.get_repository(
             base_url="https://git.example.test",

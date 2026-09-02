@@ -79,4 +79,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Require the deployment-level `FMCP_ALLOW_UNVERIFIED_FORGEJO_TLS` opt-in before the Dashboard can disable Forgejo certificate verification.
 - Remove credentials embedded in remote URLs from invocation arguments and replace multi-file commit contents with byte counts and SHA-256 digests before audit persistence.
 - Trust forwarded client IPs only from exact `FMCP_TRUSTED_PROXY_CIDRS`, resolve chains from right to left, disable Uvicorn's implicit proxy-header parsing in Compose, and bound/purge in-memory rate-limit key tables.
+- Revalidate the unverified-TLS deployment policy before every PAT verification and tool connection so a stored legacy `verify_tls=false` value cannot bypass a later policy change.
+- Redact and bound extracted invocation targets as well as full arguments, including camelCase secret keys and credential-bearing authorities without an explicit URL scheme.
+- Reserve login and invitation rate-limit attempts atomically, and combine duplicate `X-Forwarded-For` lines before resolving the first untrusted hop.
+- Disable implicit Uvicorn proxy-header parsing in the standalone image and reject redundant file-path dot segments in both MCP schemas and the Forgejo client.
 - Bind the reference App and test Forgejo host ports to loopback by default, with an explicit App bind-address override for reviewed deployments.

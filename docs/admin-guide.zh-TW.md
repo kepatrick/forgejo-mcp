@@ -135,7 +135,7 @@ Tool invocation records 包含：
 - Forgejo username；
 - tool name、version 與 risk；
 - authorization decision 與 denial reason；
-- 遮蔽後的 arguments 與 extracted target；
+- 遮蔽後的 arguments，以及獨立遮蔽並限制長度的 extracted target；
 - status、duration 與 bounded result summary；
 - 不含 credential 明文的 error classification。
 
@@ -143,7 +143,7 @@ Tool invocation records 包含：
 
 Forgejo MCP audit records 用來補充 Forgejo repository history 與 Forgejo 本身的 audit，不是取代它們。
 
-Remote URL 中的 credential 會在 persistence 前移除。Multi-file commit 的內容只會記錄 byte length 與 SHA-256 digest；invocation arguments 不會保留 file content。
+Remote URL 中的 credential 會在 persistence 前從 arguments 與 extracted target 移除。Multi-file commit 的內容只會記錄 byte length 與 SHA-256 digest；invocation arguments 不會保留 file content。
 
 ## 9. 停用或撤銷存取
 

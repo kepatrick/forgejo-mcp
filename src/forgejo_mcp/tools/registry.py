@@ -91,13 +91,13 @@ _OWNER = {
     "type": "string",
     "minLength": 1,
     "maxLength": 255,
-    "pattern": r"^(?!\.{1,2}$)[^/\x00-\x1f\x7f]+$",
+    "pattern": r"^(?![ \t\r\n]*\.{1,2}[ \t\r\n]*$)[^/\x00-\x1f\x7f]+$",
 }
 _REPO = {
     "type": "string",
     "minLength": 1,
     "maxLength": 255,
-    "pattern": r"^(?!\.{1,2}$)[^/\x00-\x1f\x7f]+$",
+    "pattern": r"^(?![ \t\r\n]*\.{1,2}[ \t\r\n]*$)[^/\x00-\x1f\x7f]+$",
 }
 _PAGE = {"type": "integer", "minimum": 1, "maximum": 100000, "default": 1}
 _LIMIT = {"type": "integer", "minimum": 1, "maximum": 100, "default": 30}
@@ -153,9 +153,14 @@ _REF = {
     "type": "string",
     "minLength": 1,
     "maxLength": 255,
-    "pattern": r"^(?!\.{1,2}$)[^\x00-\x1f\x7f]+$",
+    "pattern": r"^(?![ \t\r\n]*\.{1,2}[ \t\r\n]*$)[^\x00-\x1f\x7f]+$",
 }
-_FILE_PATH = {"type": "string", "minLength": 1, "maxLength": 1024}
+_FILE_PATH = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 1024,
+    "pattern": r"^(?!/)(?!\.{1,2}(?:/|$))(?!.*\/\.{1,2}(?:/|$))[^\x00-\x1f\x7f]+$",
+}
 _NUMBER = {"type": "integer", "minimum": 1}
 _TIMESTAMP = {"type": "string", "format": "date-time"}
 _TITLE = {"type": "string", "minLength": 1, "maxLength": 255}

@@ -6,7 +6,7 @@
 
 > The current branch disclosure scan, privacy review, final validation commands and independent-review checklist are maintained in the [third-party review handoff](third-party-review.md).
 
-> An independent Claude review on 2026-09-02 challenged two conclusions in this document and found additional audit/deployment weaknesses. Its original evidence and the remediation disposition are preserved in the [external audit report](audit-externe-2026-09-02.fr.md). In particular, the follow-up now rejects dot segments across repository/ref parameters and redacts invocation content before persistence.
+> An independent Claude review on 2026-09-02 challenged two conclusions in this document and found additional audit/deployment weaknesses. Its original evidence, adverse counter-audit and remediation dispositions are preserved in the [external audit report](audit-externe-2026-09-02.fr.md). The follow-up rejects dot segments across repository/ref/file parameters, redacts both arguments and extracted targets before persistence, and revalidates TLS policy at every PAT-bearing boundary.
 
 The audit covered commit `d29d13bb21431fe307aca9fef7c0cd96749cd2b6` and the security patch prepared on branch `compat/forgejo-16.0.3`. It found no Critical issue, two High issues, three Medium issues, and three Low issues. All eight findings are fixed by the patch documented here.
 
@@ -131,9 +131,9 @@ Automated checks included the full Python test suite, Ruff, MyPy, frontend lint/
 | FollowRedirect | Safe: `follow_redirects=False` at `src/forgejo_mcp/forgejo/client.py:1822-1827`, with explicit redirect rejection at line 1865 |
 | Same-Origin | SEC-003 fixed with exact allowlist before bearer authentication |
 | Deserialization | SEC-004 fixed; JSON and ZIP inputs are bounded, ZIP content stays in memory and is never written/extracted |
-| Race conditions | SEC-005 fixed; in-flight MCP calls retain normal start-time authorization semantics |
+| Race conditions | SEC-005 fixed; login/invitation attempts are reserved atomically before authentication; in-flight MCP calls retain normal start-time authorization semantics |
 | Secret storage | No defect found: PAT AES-GCM nonces/AAD, hashed high-entropy MCP/session/invitation tokens, and read-only secret mounts are appropriate |
-| Credential logging | SEC-006 fixed; follow-up redaction also removes URL user-info and replaces `changes[].content` with size plus SHA-256 before audit persistence |
+| Credential logging | SEC-006 fixed; follow-up redaction removes URL user-info from arguments and bounded targets, recognizes camelCase secret keys, and replaces `changes[].content` with size plus SHA-256 before audit persistence |
 
 ## Residual risks and deployment requirements
 
@@ -147,12 +147,12 @@ Automated checks included the full Python test suite, Ruff, MyPy, frontend lint/
 
 ## Validation evidence
 
-- Python unit/integration suite: 120 passed; the separate external-credential E2E was skipped as designed.
+- Python unit/integration suite: 135 collected, 134 passed; the separate external-credential E2E was skipped as designed.
 - Ruff check/format and strict MyPy: pass.
 - Frontend ESLint, TypeScript and production build: pass.
 - `npm audit`: 0 vulnerabilities after lock update.
 - `pip-audit`: 0 vulnerabilities after lock update.
 - Docker Compose configuration: valid with the required production URL pin.
 - Forgejo E2E: all 50 tools against 16.0.2 and 16.0.3, including login, repositories, branches, commits, pull requests, issues, releases, files, search, webhooks, Actions, OAuth and MCP `2025-06-18`.
-- Secrets: Gitleaks found no leak in the worktree or 14-commit history; detect-secrets candidates were reviewed as fixtures, placeholders, examples or checksums.
+- Secrets: Gitleaks found no leak in the worktree or published history; detect-secrets candidates were reviewed as fixtures, placeholders, examples or checksums.
 - Permissions: no new PAT scopes; GitHub Actions remains `contents: read`; no new MCP capability or grant.

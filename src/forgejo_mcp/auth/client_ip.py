@@ -18,9 +18,10 @@ def get_client_ip(request: Request, settings: Settings) -> str | None:
     if not _is_trusted(peer, settings.trusted_proxy_cidrs):
         return str(peer)
 
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded is None:
+    forwarded_values = request.headers.getlist("x-forwarded-for")
+    if not forwarded_values:
         return str(peer)
+    forwarded = ",".join(forwarded_values)
     parts = [part.strip() for part in forwarded.split(",")]
     if not parts or len(parts) > _MAX_FORWARDED_HOPS or any(not part for part in parts):
         return str(peer)

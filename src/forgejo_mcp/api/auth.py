@@ -105,7 +105,7 @@ async def login(
     normalized = normalize_username(payload.username)
     client_ip = get_client_ip(request, request.app.state.settings)
     rate_limit_key = f"{client_ip}:{normalized}"
-    _login_limiter.check(rate_limit_key)
+    lease = _login_limiter.check(rate_limit_key)
     try:
         result = await service.login(
             username=payload.username,
@@ -115,9 +115,9 @@ async def login(
             ttl_hours=request.app.state.settings.session_ttl_hours,
         )
     except AuthenticationFailed:
-        _login_limiter.failure(rate_limit_key)
+        _login_limiter.failure(lease)
         raise
-    _login_limiter.success(rate_limit_key)
+    _login_limiter.success(lease)
     set_auth_cookies(response, request.app.state.settings, result.session_token, result.csrf_token)
     return account_response(result.account)
 

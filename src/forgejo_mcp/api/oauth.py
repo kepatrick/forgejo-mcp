@@ -208,7 +208,7 @@ def create_oauth_routes(service: OAuthService, settings: Settings) -> list[Route
             )
         client_ip = get_client_ip(request, settings)
         rate_limit_key = f"{client_ip}:{username.casefold()}"
-        _oauth_login_limiter.check(rate_limit_key)
+        lease = _oauth_login_limiter.check(rate_limit_key)
         async with request.app.state.db_session_factory() as session:
             auth = AuthService(session)
             try:
@@ -220,12 +220,12 @@ def create_oauth_routes(service: OAuthService, settings: Settings) -> list[Route
                     ttl_hours=settings.session_ttl_hours,
                 )
             except AuthenticationFailed:
-                _oauth_login_limiter.failure(rate_limit_key)
+                _oauth_login_limiter.failure(lease)
                 return _oauth_html(
                     _login_page(interaction, "MCP client", csrf, login_failed=True),
                     401,
                 )
-            _oauth_login_limiter.success(rate_limit_key)
+            _oauth_login_limiter.success(lease)
             if (
                 result.account.role != AccountRole.USER
                 or result.account.user_id is None

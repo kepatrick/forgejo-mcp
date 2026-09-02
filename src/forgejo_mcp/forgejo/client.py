@@ -2248,7 +2248,7 @@ def _file_path(value: str) -> str:
         not normalized
         or len(normalized) > 1024
         or normalized.startswith("/")
-        or any(segment == ".." for segment in segments)
+        or any(segment in {".", ".."} for segment in segments)
         or any(ord(character) < 32 or ord(character) == 127 for character in normalized)
     ):
         raise ValidationFailed("path is invalid")

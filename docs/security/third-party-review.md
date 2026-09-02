@@ -13,7 +13,7 @@ The branch must preserve:
 - GitHub Actions read-only repository permissions;
 - the global, user and token authorization intersection.
 
-The 2026-09-02 follow-up specifically changes OAuth client compatibility, browser CORS, repository/ref segment validation, Forgejo URL/TLS deployment policy, audit redaction, trusted-proxy address handling, rate-limit storage bounds and loopback Compose publishing.
+The 2026-09-02 follow-up specifically changes OAuth client compatibility, browser CORS, repository/ref/file segment validation, Forgejo URL/TLS deployment policy, audit redaction, trusted-proxy address handling, atomic rate-limit reservations and loopback Compose publishing.
 
 ## Evidence to read first
 
@@ -27,9 +27,9 @@ The 2026-09-02 follow-up specifically changes OAuth client compatibility, browse
 
 - Can any owner, organization, repository, ref or file parameter cause HTTP URL normalization to reach a different Forgejo endpoint than the granted tool describes?
 - Can a Dashboard administrator redirect a PAT-bearing request when the deployment allowlist is empty, stale or different from the stored instance?
-- Can URL credentials, authorization values, commit content or file/diff content enter logs, audit rows, API responses or browser storage?
-- Can an untrusted peer spoof `X-Forwarded-For`, or can a trusted-proxy chain select an attacker-provided leftmost address instead of the first untrusted hop from the right?
-- Can `verify_tls=false` be selected without a separate deployment-owner decision?
+- Can URL credentials, authorization values, commit content or file/diff content enter logs, full audit arguments, extracted audit targets, API responses or browser storage?
+- Can an untrusted peer spoof single or duplicate `X-Forwarded-For` lines, or can a trusted-proxy chain select an attacker-provided leftmost address instead of the first untrusted hop from the right?
+- Can `verify_tls=false` be selected or remain effective from stored state without a current deployment-owner decision?
 - Do OAuth omission handling, CORS and Origin validation preserve resource binding, Same-Origin controls and native MCP clients?
 - Did any change add a Forgejo PAT scope, MCP tool, tool grant, GitHub permission, redirect following or arbitrary outbound destination?
 
@@ -61,19 +61,19 @@ Also re-run the repository's Gitleaks and detect-secrets scans against both curr
 ## Residual risks requiring operator controls
 
 - Forgejo performs final DNS resolution for repository migration. Keep its migration allowlist and network egress policy enabled.
-- Rate limits and active MCP sessions are process-local; limiter state resets on restart and is not shared across replicas.
+- Rate limits and active MCP sessions are process-local; reservations are atomic within one process, but limiter state resets on restart and is not shared across replicas.
 - Reference images and Actions use version tags instead of immutable digests/commit SHAs.
 - Public TLS termination, metrics isolation, PostgreSQL backup/restore and encryption-key recovery remain operator responsibilities.
 - Possession of both PostgreSQL data and the credential-encryption key can recover active PATs.
 
 ## Maintainer validation before handoff
 
-- Python: 120 passed, 1 external-credential E2E skipped.
+- Python: 135 collected, 134 passed, 1 external-credential E2E skipped.
 - Ruff check/format and strict MyPy: passed.
 - Frontend ESLint, TypeScript and Vite production build: passed.
 - `pip-audit` and `npm audit`: 0 known vulnerabilities.
 - Bandit: 0 Medium, 0 High; 24 reviewed Low heuristic findings.
-- Gitleaks: no leak in the current worktree or 14-commit history.
+- Gitleaks: no leak in the current worktree or published history.
 - Docker E2E: all 50 tools passed independently on Forgejo 16.0.2 and 16.0.3, including OAuth and MCP `2025-06-18`.
 - OpenAPI comparison: 0 endpoint differences; only version metadata and `IssueMeta.required` changed.
 - Docker Compose configuration: valid with loopback publishing and required Forgejo URL policy.

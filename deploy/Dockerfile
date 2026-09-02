@@ -28,4 +28,4 @@ RUN groupadd --system app && useradd --system --gid app --home /app app \
 
 ENTRYPOINT ["forgejo-mcp-entrypoint"]
 EXPOSE 8000
-CMD ["uvicorn", "forgejo_mcp.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "forgejo_mcp.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-proxy-headers"]

@@ -42,12 +42,13 @@ async def invitation_context(
     payload: InvitationTokenRequest, request: Request, service: InvitationServiceDep
 ) -> InvitationContextResponse:
     key = rate_limit_key(request, payload.token)
-    _invitation_limiter.check(key)
+    lease = _invitation_limiter.check(key)
     try:
         context = await service.context(payload.token)
     except ApplicationError:
-        _invitation_limiter.failure(key)
+        _invitation_limiter.failure(lease)
         raise
+    _invitation_limiter.success(lease)
     return InvitationContextResponse(
         display_name=context.display_name,
         username=context.username,
@@ -61,11 +62,11 @@ async def accept_invitation(
     payload: AcceptInvitationRequest, request: Request, service: InvitationServiceDep
 ) -> InvitationAcceptedResponse:
     key = rate_limit_key(request, payload.token)
-    _invitation_limiter.check(key)
+    lease = _invitation_limiter.check(key)
     try:
         username = await service.accept(payload.token, payload.password)
     except ApplicationError:
-        _invitation_limiter.failure(key)
+        _invitation_limiter.failure(lease)
         raise
-    _invitation_limiter.success(key)
+    _invitation_limiter.success(lease)
     return InvitationAcceptedResponse(username=username)

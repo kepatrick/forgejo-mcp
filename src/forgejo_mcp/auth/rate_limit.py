@@ -6,6 +6,12 @@ from threading import Lock
 from fastapi import HTTPException, status
 
 
+@dataclass(frozen=True)
+class LoginRateLimitLease:
+    key: str
+    event_id: int
+
+
 class LoginRateLimiter:
     """Small in-memory limiter suitable for the supported single-replica deployment."""
 
@@ -18,34 +24,24 @@ class LoginRateLimiter:
         self.attempts = attempts
         self.window_seconds = window_seconds
         self.max_keys = max_keys
-        self._events: dict[str, deque[float]] = {}
+        self._events: dict[str, deque[tuple[float, int]]] = {}
+        self._next_event_id = 0
         self._lock = Lock()
 
-    def check(self, key: str) -> None:
-        now = time.monotonic()
-        with self._lock:
-            events = self._events.get(key)
-            if events is None:
-                return
-            _prune(events, now, self.window_seconds)
-            if not events:
-                self._events.pop(key, None)
-                return
-            if len(events) >= self.attempts:
-                raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "too many login attempts")
-
-    def failure(self, key: str) -> None:
+    def check(self, key: str) -> LoginRateLimitLease:
         now = time.monotonic()
         with self._lock:
             events = self._events.get(key)
             if events is not None:
-                _prune(events, now, self.window_seconds)
+                _prune_login_events(events, now, self.window_seconds)
                 if not events:
                     self._events.pop(key, None)
                     events = None
+            if events is not None and len(events) >= self.attempts:
+                raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "too many login attempts")
             if events is None:
                 if len(self._events) >= self.max_keys:
-                    _prune_mapping(self._events, now, self.window_seconds)
+                    _prune_login_mapping(self._events, now, self.window_seconds)
                 if len(self._events) >= self.max_keys:
                     raise HTTPException(
                         status.HTTP_429_TOO_MANY_REQUESTS,
@@ -53,11 +49,26 @@ class LoginRateLimiter:
                     )
                 events = deque()
                 self._events[key] = events
-            events.append(now)
+            self._next_event_id += 1
+            lease = LoginRateLimitLease(key=key, event_id=self._next_event_id)
+            events.append((now, lease.event_id))
+            return lease
 
-    def success(self, key: str) -> None:
+    def failure(self, lease: LoginRateLimitLease) -> None:
+        # The attempt was reserved atomically by check() and remains charged.
+        del lease
+
+    def success(self, lease: LoginRateLimitLease) -> None:
         with self._lock:
-            self._events.pop(key, None)
+            events = self._events.get(lease.key)
+            if events is None:
+                return
+            for event in events:
+                if event[1] == lease.event_id:
+                    events.remove(event)
+                    break
+            if not events:
+                self._events.pop(lease.key, None)
 
 
 @dataclass(frozen=True)
@@ -125,5 +136,25 @@ def _prune_mapping(
 ) -> None:
     for key, events in list(entries.items()):
         _prune(events, now, window_seconds)
+        if not events:
+            entries.pop(key, None)
+
+
+def _prune_login_events(
+    events: deque[tuple[float, int]],
+    now: float,
+    window_seconds: int,
+) -> None:
+    while events and events[0][0] <= now - window_seconds:
+        events.popleft()
+
+
+def _prune_login_mapping(
+    entries: dict[str, deque[tuple[float, int]]],
+    now: float,
+    window_seconds: int,
+) -> None:
+    for key, events in list(entries.items()):
+        _prune_login_events(events, now, window_seconds)
         if not events:
             entries.pop(key, None)

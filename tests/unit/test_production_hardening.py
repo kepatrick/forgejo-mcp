@@ -1,7 +1,10 @@
 import asyncio
 import json
 import logging
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -10,11 +13,17 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from starlette.requests import Request
 
-from forgejo_mcp.application.errors import ExternalServiceUnavailable, ValidationFailed
+from forgejo_mcp.application.errors import (
+    ConfigurationUnavailable,
+    ExternalServiceUnavailable,
+    ValidationFailed,
+)
+from forgejo_mcp.application.forgejo_credential_service import ForgejoCredentialService
 from forgejo_mcp.application.forgejo_instance_service import ForgejoInstanceService
+from forgejo_mcp.application.forgejo_tool_service import ForgejoToolService
 from forgejo_mcp.application.runtime import InvocationCoordinator, ServiceShuttingDown
 from forgejo_mcp.auth.client_ip import get_client_ip
-from forgejo_mcp.auth.rate_limit import MultiScopeRateLimiter
+from forgejo_mcp.auth.rate_limit import LoginRateLimiter, MultiScopeRateLimiter
 from forgejo_mcp.config import Settings
 from forgejo_mcp.forgejo import client as forgejo_client_module
 from forgejo_mcp.forgejo.client import ForgejoClient
@@ -99,6 +108,27 @@ def test_forwarded_client_ip_walks_right_to_left_and_rejects_invalid_chains() ->
         == "198.51.100.7"
     )
     assert get_client_ip(_request_from("10.0.0.10", "invalid"), settings) == "10.0.0.10"
+
+
+def test_forwarded_client_ip_combines_duplicate_header_lines() -> None:
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "headers": [
+                (b"x-forwarded-for", b"203.0.113.9"),
+                (b"x-forwarded-for", b"198.51.100.7"),
+            ],
+            "client": ("10.0.0.10", 12345),
+        }
+    )
+    settings = Settings(
+        environment="test",
+        trusted_proxy_cidrs=["10.0.0.0/24"],
+    )
+
+    assert get_client_ip(request, settings) == "198.51.100.7"
 
 
 def test_trusted_proxy_cidrs_are_normalized_and_validated() -> None:
@@ -220,6 +250,59 @@ async def test_unverified_forgejo_tls_requires_deployment_opt_in() -> None:
         await service.check(base_url="https://git.example.test", verify_tls=False)
 
 
+async def test_inherited_unverified_tls_is_rejected_before_pat_verification() -> None:
+    user_id = uuid.uuid4()
+
+    class FakeUsers:
+        async def get(self, _user_id: uuid.UUID) -> SimpleNamespace:
+            return SimpleNamespace(id=user_id, normalized_forgejo_username="patrick")
+
+    class FakeInstances:
+        async def primary(self) -> SimpleNamespace:
+            return SimpleNamespace(base_url="https://git.example.test", verify_tls=False)
+
+    class UnexpectedClient:
+        async def get_current_user(self, **_kwargs: object) -> None:
+            raise AssertionError("the PAT must not be sent when TLS verification is forbidden")
+
+    service = object.__new__(ForgejoCredentialService)
+    service.settings = Settings(
+        environment="test",
+        forgejo_allowed_base_urls=["https://git.example.test"],
+    )
+    service.users = FakeUsers()  # type: ignore[assignment]
+    service.instances = FakeInstances()  # type: ignore[assignment]
+    service.client = UnexpectedClient()  # type: ignore[assignment]
+
+    with pytest.raises(ConfigurationUnavailable, match="unverified TLS"):
+        await service.verify(
+            actor_account_id=uuid.uuid4(),
+            user_id=user_id,
+            token="synthetic-pat",
+        )
+
+
+async def test_inherited_unverified_tls_is_rejected_before_pat_decryption() -> None:
+    class FakeInstances:
+        async def primary(self) -> SimpleNamespace:
+            return SimpleNamespace(base_url="https://git.example.test", verify_tls=False)
+
+    class UnexpectedCredentials:
+        async def decrypted_token_for_user(self, _user_id: uuid.UUID) -> str:
+            raise AssertionError("the PAT must not be decrypted when TLS verification is forbidden")
+
+    service = object.__new__(ForgejoToolService)
+    service.settings = Settings(
+        environment="test",
+        forgejo_allowed_base_urls=["https://git.example.test"],
+    )
+    service.instances = FakeInstances()  # type: ignore[assignment]
+    service.credentials = UnexpectedCredentials()  # type: ignore[assignment]
+
+    with pytest.raises(ConfigurationUnavailable, match="unverified TLS"):
+        await service._connection(uuid.uuid4())
+
+
 def test_mcp_rejects_browser_origins_unless_explicitly_allowed() -> None:
     default_app = create_app(Settings(environment="test"))
     allowed_app = create_app(
@@ -288,17 +371,16 @@ def test_multi_scope_rate_limiter_rejects_without_charging_other_scope() -> None
     assert limiter.check([("token", "b", 1), ("user", "u", 2)]).allowed
 
 
-def test_rate_limiters_bound_key_storage_and_do_not_allocate_on_read() -> None:
-    from forgejo_mcp.auth.rate_limit import LoginRateLimiter
-
+def test_rate_limiters_bound_key_storage_and_reserve_attempts() -> None:
     login_limiter = LoginRateLimiter(max_keys=2)
-    for index in range(100):
-        login_limiter.check(f"unseen-{index}")
-    assert len(login_limiter._events) == 0
-    login_limiter.failure("a")
-    login_limiter.failure("b")
+    first = login_limiter.check("a")
+    second = login_limiter.check("b")
+    login_limiter.failure(first)
+    login_limiter.failure(second)
     with pytest.raises(HTTPException, match="capacity exceeded"):
-        login_limiter.failure("c")
+        login_limiter.check("c")
+    login_limiter.success(first)
+    assert login_limiter.check("c").key == "c"
 
     multi_limiter = MultiScopeRateLimiter(window_seconds=60, max_keys=2)
     assert multi_limiter.check([("ip", "a", 5)]).allowed
@@ -306,6 +388,22 @@ def test_rate_limiters_bound_key_storage_and_do_not_allocate_on_read() -> None:
     decision = multi_limiter.check([("ip", "c", 5)])
     assert decision.allowed is False
     assert decision.scope == "capacity"
+
+
+def test_login_rate_limiter_reserves_concurrent_attempts_atomically() -> None:
+    limiter = LoginRateLimiter(attempts=5)
+
+    def attempt(_index: int) -> bool:
+        try:
+            limiter.check("same-key")
+        except HTTPException:
+            return False
+        return True
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        accepted = list(pool.map(attempt, range(10)))
+
+    assert sum(accepted) == 5
 
 
 async def test_invocation_coordinator_drains_and_rejects_new_work() -> None:

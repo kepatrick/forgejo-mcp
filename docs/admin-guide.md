@@ -155,7 +155,7 @@ Tool invocation records include:
 - Forgejo username;
 - tool name, version and risk;
 - authorization decision and denial reason;
-- redacted arguments and extracted target;
+- redacted arguments and an independently redacted, bounded target;
 - status, duration and bounded result summary;
 - error classification without credential plaintext.
 

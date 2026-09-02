@@ -4,9 +4,9 @@
 
 ---
 
-## Disposition après remédiation
+## Disposition initiale du commit `38bde2d` (avant contre-audit)
 
-> Cette section a été ajoutée après l'audit externe. Le rapport Claude original est conservé intégralement en dessous comme photographie du code avant correctif. « Corrigé » désigne ici le patch de la branche `compat/forgejo-16.0.3`; les risques que l'application ne peut pas supprimer seule restent explicitement classés comme résiduels.
+> Cette section historique décrit la première remédiation telle qu'elle était déclarée au commit `38bde2d`. Le contre-audit adverse qui suit a ensuite démontré deux corrections moyennes incomplètes et plusieurs réserves faibles. Le rapport Claude original et son contre-audit sont conservés intégralement ; la disposition finale du correctif de suivi est ajoutée après le contre-audit.
 
 | # | Disposition | Correctif / risque résiduel |
 |---|---|---|
@@ -19,22 +19,95 @@
 | 7 — Moyenne composite, migration/supply-chain/exposition | **Partiellement corrigé, résidu documenté** | Le Compose publie l'App et le Forgejo de test sur loopback par défaut et désactive la confiance implicite d'Uvicorn dans les proxy headers (`deploy/compose.yaml:52-54,102-105`). La résolution DNS finale des migrations reste effectuée par Forgejo : sa politique de migration et les contrôles d'egress restent obligatoires. Images et Actions restent versionnées par tags, pas par digests/SHA immuables. |
 | 8–17 — Faibles | **Réduits ou documentés** | Les clés `api_key`, `private_key` et `passwd` sont maintenant sensibles sans utiliser le fragment dangereux `pat`; les limiteurs sont bornés. Les TTL/replay/session/rotation et autres limites faibles restent dans les limitations connues lorsqu'ils ne justifient pas une modification de compatibilité. |
 
-### Verdict après patch
+### Verdict déclaré pour `38bde2d` avant contre-audit
 
 - **Critique : 0** constat connu.
 - **Haute : 0** non corrigée parmi les deux constats externes.
 - **Moyenne :** aucun défaut applicatif confirmé laissé sans traitement ; demeurent les risques opérationnels explicitement documentés (résolution DNS Forgejo, pinning immuable, état mémoire mono-réplique et terminaison TLS opérateur).
 - **Permissions :** aucun scope PAT Forgejo, outil MCP, grant MCP ou permission GitHub supplémentaire n'est ajouté par ces correctifs.
 
-### Validation après patch
+### Validation de la branche, actualisée après le correctif de suivi
 
-- Python : **120 tests réussis**, 1 E2E à credentials externes ignoré ; migrations PostgreSQL appliquées sur une base jetable.
+- Python : **135 tests collectés, 134 réussis et 1 E2E à credentials externes ignoré** ; migrations PostgreSQL appliquées sur une base jetable.
 - Qualité : Ruff check/format et MyPy strict réussis ; ESLint, TypeScript et build Vite réussis.
 - Dépendances : `pip-audit` et `npm audit` rapportent **0 vulnérabilité connue**.
 - Analyse statique : Bandit rapporte **0 moyen / 0 élevé** ; ses 24 alertes basses sont des asserts de narrowing ou des littéraux de protocole examinés.
-- Secrets : Gitleaks rapporte **0 fuite** dans le worktree et dans les 14 commits publiés ; les candidats detect-secrets ont été classés comme placeholders, credentials E2E synthétiques, exemples de redaction ou checksums.
+- Secrets : Gitleaks rapporte **0 fuite** dans le worktree et dans l'historique publié ; les candidats detect-secrets ont été classés comme placeholders, credentials E2E synthétiques, exemples de redaction ou checksums.
 - E2E : les **50 outils** passent contre Forgejo 16.0.2 et 16.0.3, avec login, repositories, branches, commits, pull requests, issues, releases, files, search, webhooks, Actions, OAuth et MCP `2025-06-18`.
 - Swagger : 2 différences structurelles seulement — version et champs requis de `IssueMeta` — avec **0 différence d'endpoint**.
+
+---
+
+## 🔁 Contre-audit du patch de remédiation (2026-09-02, soir)
+
+> Note Claude — contre-vérification **adverse** du commit de remédiation `38bde2d`, indépendante de la section « Disposition après remédiation » ci-dessus (rédigée par l'auteur du patch). Chaque correctif a été attaqué avec des témoins exécutés via le venv du projet ; le diff complet du patch a été relu ; les tests, Ruff et MyPy ont été ré-exécutés par l'auditeur (pas seulement crus sur parole).
+
+### Intégrité du patch : ✅ confirmée
+
+- Un seul commit de remédiation (`38bde2d`, 44 fichiers, +960/−132), poussé sur `origin/compat/forgejo-16.0.3` (working tree propre, `ls-remote` concordant, 14 commits publiés confirmés).
+- Aucun code suspect dans le diff (pas d'eval/subprocess/domaine réseau nouveau), aucune dépendance runtime modifiée (bumps dev-only pytest/pytest-asyncio), aucun test trafiqué pour passer, aucun secret dans le diff.
+- Ré-exécuté par l'auditeur : `pytest tests/unit` → **112 passed** ; 120 tests collectés avec l'intégration (cohérent avec l'annonce) ; `ruff check` et `mypy src` → 0 erreur. Non re-vérifiés localement : Bandit, Gitleaks, pip-audit/npm audit, E2E 50 outils.
+
+### Verdict par correctif revendiqué
+
+| Constat d'origine | Revendication | Verdict adverse |
+|---|---|---|
+| 1 — HAUTE dot-segments | Corrigé | ✅ **CONFIRMÉ** — témoins `..`/`.`/`%2e%2e`/Unicode exécutés (0 requête émise sur `owner=".."`), inventaire exhaustif des paramètres interpolés en chemin : aucun oublié. 2 résidus non exploitables : le pattern de schéma seul laisse passer `" .. "` (arrêté par le client après `strip()` — la classe « équivalents après strip » ne tient que sur une couche) ; `_file_path` accepte les segments `.` (cosmétique intra-repo). |
+| 2 — HAUTE allowlist vide | Corrigé | ✅ **CONFIRMÉ** — exécuté : dev sans allowlist → refus ; les 3 points de garde (test de connexion, verify PAT, chaque appel d'outil) vérifiés ; aucune variante de comparaison d'URL ne passe (trailing slash/casse normalisés, `:443`/userinfo/IDN → refus fermé) ; base_url non conforme en DB → fail-closed. |
+| 3 — MOY. IP/proxy/rate limit | Corrigé | ✅ **CONFIRMÉ avec 2 réserves** — algorithme droite→gauche correct (15/15 témoins, spoof simple impossible, IPv4-mapped déplié, fail-safe sur malformé) ; limiteurs bornés fail-closed, éviction non contournable par spray. Réserves : **en-têtes `X-Forwarded-For` dupliqués** — starlette `headers.get()` ne lit que le premier, un proxy qui ajoute une 2ᵉ ligne au lieu d'appendre laisse gagner l'en-tête de l'attaquant (prouvé ; correctif : `getlist` + join) ; rafale de logins concurrents dépasse le plafond de 5 (`check()`/`failure()` non atomiques entre eux). |
+| 4 — MOY. credentials dans URL | Corrigé | ⚠️ **PARTIEL — fuite résiduelle prouvée** : le canal `redacted_arguments` est bien corrigé (userinfo neutralisé récursivement, ordre reçu→validation conservé, test avec credentials ajouté), **mais le même reçu persiste `target=extract_target(arguments)` sur les arguments BRUTS** (`tool_invocation_service.py:122`, `redaction.py:83-89`) : témoin exécuté — `{"repo": "https://bot:ghp_secret@github.com/o/r.git"}` → `ghp_secret` **en clair** dans le champ `target` de l'audit, avant validation. La faille d'origine, déplacée dans le champ voisin. Limites secondaires : URLs sans schéma (`u:p@host/…`, scp-like) non couvertes par le motif. |
+| 5 — MOY. contenus de commits | Corrigé | ✅ **CONFIRMÉ** — remplacement `{redacted, bytes, sha256}` exécuté sur payload réaliste, SHA-256 et taille UTF-8 corrects. Portée étroite assumée : chemin exact `changes[].content` seulement ; bodies/commentaires restent archivés en clair ≤ 4 Ko (limitation documentée, pas un trou nouveau). |
+| 6 — MOY. verify_tls opt-in | Corrigé | ⚠️ **PARTIEL — garde à l'enregistrement seulement** : `allow_unverified_forgejo_tls` n'est consulté que dans `check()` (`forgejo_instance_service.py:39-42`). À l'**usage**, `forgejo_credential_service.py:92-97` et `forgejo_tool_service.py:377-396` honorent `instance.verify_tls` tel quel, sans le flag, et **aucune migration ne purge un `verify_tls=false` hérité** : une instance enregistrée avant le patch reste non vérifiée sur chaque appel porteur de PAT. Asymétrie avec l'allowlist (revalidée, elle, aux 3 points). Correctif : répéter la garde dans `_connection` et `verify`, ou forcer `verify_tls=True` sans le flag. |
+| 8-17 — fragments sensibles | Réduits | ✅ **CONFIRMÉ avec trou** — `api_key`/`passwd`/`private_key` redigés, `path` non faussement redigé, `pat` évité comme prévu ; **mais `apiKey`/`privateKey` en camelCase passent en clair** (la normalisation ne casse pas le camelCase, et l'enregistrement d'audit précède la validation des clés). |
+
+### Hors périmètre relevé dans le diff
+
+- **Assouplissement OAuth `resource` (RFC 8707)** : obligatoire → optionnel au `/token` et à l'autorisation, avec suppression de l'assertion `missing_resource`. Documenté (CHANGELOG + `docs/security/oauth-2.1.md`), défendable en mono-ressource, rejet d'un `resource` erroné toujours testé — mais c'est le seul **recul** du patch, glissé dans un commit « harden ». À valider comme décision produit.
+- `deploy/Dockerfile:31` : le `CMD` garde `--host 0.0.0.0` **sans** `--no-proxy-headers` — le durcissement proxy ne vit que dans l'override compose ; une image lancée directement retombe sur le défaut Uvicorn.
+
+### Constats restants après patch (priorisés)
+
+1. 🟠 **MOYENNE** — `extract_target` persiste les champs bruts non redigés dans le reçu d'audit (même classe que le défaut n°4 d'origine). Correctif : appliquer la redaction URL + bornage aux valeurs extraites.
+2. 🟠 **MOYENNE** — `verify_tls=false` hérité en DB honoré à l'usage sans le flag de déploiement ; ajouter la garde aux points d'usage ou migrer l'état.
+3. 🟡 BASSE — fusion des en-têtes `X-Forwarded-For` dupliqués (`getlist` + join) dans `auth/client_ip.py`.
+4. 🟡 BASSE — normaliser le camelCase dans `_sensitive_key` (ou ajouter `apikey`/`privatekey` aux fragments).
+5. 🟡 BASSE — `--no-proxy-headers` dans le `CMD` du Dockerfile ; strip côté schémas (aligner les deux couches dot-segments) ; rafale de logins concurrents ; URLs sans schéma dans le motif de redaction.
+
+### Verdict après contre-audit
+
+Les **2 failles HAUTES sont réellement corrigées** (confirmé par attaque, pas par lecture des tests de l'auteur). Le patch est intègre — aucun code malveillant, aucune régression cachée hormis l'assouplissement OAuth documenté. Mais la section « Disposition après remédiation » ci-dessus **surévalue deux corrections** : les constats 4 et 6 sont partiels (fuite `extract_target` prouvée par exécution ; garde TLS absente des points d'usage). État réel post-patch : **0 HAUTE, 2 MOYENNES résiduelles, ~6 BASSES**.
+
+---
+
+## Disposition de suivi après le contre-audit
+
+> Cette section décrit le correctif préparé après le contre-audit adverse. Elle ne réécrit ni les preuves ni les conclusions historiques de Claude ci-dessus.
+
+| Constat du contre-audit | Disposition de suivi | Correctif et preuve de non-régression |
+|---|---|---|
+| Moyenne — fuite dans `extract_target` | **Corrigé** | Chaque valeur textuelle du target est maintenant redigée indépendamment puis bornée à 512 caractères. Les credentials avec ou sans schéma et les noms de clés sensibles en camelCase sont couverts par des tests adverses (`audit/redaction.py`, `tests/unit/test_audit_redaction.py`). |
+| Moyenne — `verify_tls=false` hérité | **Corrigé** | La politique de déploiement est réévaluée avant toute vérification d'un nouveau PAT et avant le déchiffrement du PAT utilisé par un outil. Une ancienne valeur en base échoue donc fermée si l'opt-in n'est plus actif (`forgejo_credential_service.py`, `forgejo_tool_service.py`, `tests/unit/test_production_hardening.py`). |
+| Faible — lignes `X-Forwarded-For` dupliquées | **Corrigé** | Toutes les lignes sont fusionnées avec `Headers.getlist()` avant la résolution droite-vers-gauche ; la confiance reste limitée aux CIDR de proxys déclarés. |
+| Faible — rafales concurrentes de login/invitation | **Corrigé** | Chaque tentative est réservée atomiquement sous verrou avant authentification ; un succès ne libère que sa propre réservation. Un test concurrent de 10 appels confirme que 5 seulement sont acceptés pour une limite de 5. |
+| Faible — proxy headers de l'image autonome | **Corrigé** | Le `CMD` du Dockerfile utilise désormais `--no-proxy-headers`, comme le Compose de référence. |
+| Faible — dot-segments de chemins de fichiers | **Corrigé** | Les segments `.` et `..` sont rejetés à la fois par les schémas MCP et par la validation du client Forgejo, y compris à l'intérieur d'un chemin. |
+| Faible — credentials sans schéma et clés camelCase | **Corrigé** | Les autorités de type `utilisateur:secret@hôte/chemin`, `apiKey` et `privateKey` sont redigées avant persistance. |
+
+### Verdict final après suivi
+
+- **Critique : 0** constat connu.
+- **Haute : 0** non corrigée.
+- **Moyenne : 0** défaut applicatif confirmé laissé sans traitement dans le périmètre du contre-audit.
+- Les limites restantes sont opérationnelles et documentées : résolution DNS finale des migrations par Forgejo, images/Actions non épinglées par digest/SHA, limiteurs mono-processus, terminaison TLS et sauvegarde des secrets à la charge de l'opérateur.
+- L'assouplissement OAuth `resource` reste une décision de compatibilité mono-ressource documentée : une valeur présente mais incorrecte est toujours rejetée et aucun grant, outil ou scope supplémentaire n'est accordé.
+- **Permissions :** aucun scope PAT Forgejo, outil MCP, grant MCP ou permission GitHub supplémentaire n'a été ajouté.
+
+### Validation finale du suivi
+
+- Python : **135 tests collectés, 134 réussis et 1 E2E externe ignoré**.
+- Ruff check/format, MyPy strict, ESLint, TypeScript et build Vite : réussis.
+- Docker E2E : les 50 outils, OAuth et MCP `2025-06-18` passent contre Forgejo 16.0.2 et 16.0.3.
+- PostgreSQL : migrations OAuth appliquées avec succès sur une base neuve jetable.
 
 ---
 

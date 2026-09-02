@@ -392,5 +392,10 @@ class ForgejoToolService:
             raise ConfigurationUnavailable(
                 "configured Forgejo base URL is not permitted by deployment policy"
             )
+        if not instance.verify_tls and not self.settings.allow_unverified_forgejo_tls:
+            raise ConfigurationUnavailable(
+                "configured Forgejo instance requires unverified TLS, which is disabled "
+                "by deployment policy"
+            )
         token = await self.credentials.decrypted_token_for_user(user_id)
         return instance, token

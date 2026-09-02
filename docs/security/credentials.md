@@ -6,6 +6,8 @@ Each regular Dashboard User supplies their own scoped Forgejo personal access to
 
 Before persistence, the application calls the configured Forgejo instance's `/api/v1/user` endpoint. The returned username must match the normalized Forgejo username assigned by Admin. Rotation must also preserve the immutable Forgejo user ID; otherwise the old credential must be revoked first.
 
+The deployment URL allowlist and unverified-TLS policy are re-evaluated before PAT verification and before every MCP tool connection. A stored legacy `verify_tls=false` value is refused unless the deployment currently enables `FMCP_ALLOW_UNVERIFIED_FORGEJO_TLS=true`; the policy is checked before a saved PAT is decrypted.
+
 ## Encryption
 
 PATs are encrypted with AES-256-GCM using a 32-byte, base64-encoded master key supplied through `FMCP_CREDENTIAL_ENCRYPTION_KEY_FILE`. Associated authenticated data binds each ciphertext to the internal User UUID and key version. Each encryption uses a new 96-bit nonce.
@@ -29,4 +31,4 @@ If only an MCP token is exposed, revoke that token immediately and review its in
 
 ## Logging and audit
 
-PATs and Authorization headers must never be written to application logs, audit records, API responses, browser storage, or exception details. Management audit records contain only principal IDs/usernames, lifecycle action, result category, and actor. Tool-invocation records retain bounded targets and recursively redacted arguments: sensitive keys and URL user-info are removed, while `changes[].content` is represented only by UTF-8 byte length and SHA-256 digest. Tool results are summarized without file or diff content.
+PATs and Authorization headers must never be written to application logs, audit records, API responses, browser storage, or exception details. Management audit records contain only principal IDs/usernames, lifecycle action, result category, and actor. Tool-invocation records retain bounded, independently redacted targets and recursively redacted arguments: sensitive keys and URL user-info are removed, while `changes[].content` is represented only by UTF-8 byte length and SHA-256 digest. Tool results are summarized without file or diff content.

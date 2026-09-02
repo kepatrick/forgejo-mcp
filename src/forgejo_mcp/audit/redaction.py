@@ -18,6 +18,11 @@ _SENSITIVE_FRAGMENTS = (
 _URL_CREDENTIALS = re.compile(
     r"(?P<scheme>[a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s]+@",
 )
+_AUTHORITY_CREDENTIALS = re.compile(
+    r"(?P<prefix>(?:^|[\s(]))[^/\s:@]+:[^/\s@]+@(?=[^/\s]+(?:/|$))",
+)
+_CAMEL_CASE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
+_TARGET_TEXT_LIMIT = 512
 _TARGET_FIELDS = (
     "organization",
     "owner",
@@ -68,7 +73,7 @@ def redact_arguments(arguments: dict[str, Any], *, text_limit: int = 4096) -> Re
                     "bytes": len(content_bytes),
                     "sha256": hashlib.sha256(content_bytes).hexdigest(),
                 }
-            sanitized = _URL_CREDENTIALS.sub(r"\g<scheme>[REDACTED]@", value)
+            sanitized = _redact_text(value)
             if len(sanitized) > text_limit:
                 truncated = True
                 return f"{sanitized[:text_limit]}…[TRUNCATED]"
@@ -85,7 +90,11 @@ def extract_target(arguments: dict[str, Any]) -> dict[str, Any]:
     for field in _TARGET_FIELDS:
         value = arguments.get(field)
         if isinstance(value, str | int) and not isinstance(value, bool):
-            target[field] = value
+            target[field] = (
+                _bounded_text(_redact_text(value), _TARGET_TEXT_LIMIT)
+                if isinstance(value, str)
+                else value
+            )
     return target
 
 
@@ -112,5 +121,18 @@ def summarize_result(result: dict[str, Any]) -> tuple[dict[str, Any], bool]:
 
 
 def _sensitive_key(key: str) -> bool:
-    normalized = key.casefold().replace("-", "_")
-    return any(fragment in normalized for fragment in _SENSITIVE_FRAGMENTS)
+    normalized = _CAMEL_CASE_BOUNDARY.sub("_", key).casefold().replace("-", "_")
+    collapsed = normalized.replace("_", "")
+    return any(
+        fragment in normalized or fragment.replace("_", "") in collapsed
+        for fragment in _SENSITIVE_FRAGMENTS
+    )
+
+
+def _redact_text(value: str) -> str:
+    sanitized = _URL_CREDENTIALS.sub(r"\g<scheme>[REDACTED]@", value)
+    return _AUTHORITY_CREDENTIALS.sub(r"\g<prefix>[REDACTED]@", sanitized)
+
+
+def _bounded_text(value: str, limit: int) -> str:
+    return value if len(value) <= limit else f"{value[:limit]}…[TRUNCATED]"

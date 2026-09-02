@@ -405,20 +405,25 @@ def run_oauth_flow() -> None:
         },
     )
     assert revoked_old.status_code == 401
-    concurrent_reuse = client.post(
-        "/token",
-        data={
-            "grant_type": "refresh_token",
-            "client_id": client_id,
-            "refresh_token": refresh_token,
-            "scope": "mcp:tools",
-            "resource": OAUTH_RESOURCE,
-        },
-    )
-    assert concurrent_reuse.status_code == 400
-    assert concurrent_reuse.json()["error"] == "invalid_grant"
+    concurrent_reuse = checked(
+        client.post(
+            "/token",
+            data={
+                "grant_type": "refresh_token",
+                "client_id": client_id,
+                "refresh_token": refresh_token,
+                "scope": "mcp:tools",
+                "resource": OAUTH_RESOURCE,
+            },
+        ),
+        "OAuth concurrent refresh recovery",
+    ).json()
+    concurrent_access = concurrent_reuse["access_token"]
+    assert concurrent_access != rotated_access
     rotated_mcp = McpClient(rotated_access)
     rotated_mcp.initialize()
+    concurrent_mcp = McpClient(concurrent_access)
+    concurrent_mcp.initialize()
     revoked = client.post(
         "/revoke",
         data={
@@ -431,7 +436,7 @@ def run_oauth_flow() -> None:
     assert revoked.status_code == 200
     print(
         "PASS OAuth 2.1 DCR, PKCE, 90-day consent, MCP 2025-06-18, safe concurrent "
-        "refresh rejection, and revocation"
+        "refresh recovery, and revocation"
     )
 
 

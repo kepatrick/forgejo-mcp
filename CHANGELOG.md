@@ -6,6 +6,10 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Fixed
+
+- Recover bounded concurrent OAuth refreshes with independent rotated token pairs so multi-session MCP clients such as Codex do not revoke an otherwise valid long-lived authorization.
+
 ### Added
 
 - Optional OAuth 2.1 authorization-code server with PKCE S256, exact redirect registration, RFC 8707 resource binding, RFC 9728 metadata, public-client DCR, allowlisted CIMD, local login and explicit consent.

@@ -30,7 +30,9 @@ Client 會使用 PKCE S256、公開 client registration、Forgejo MCP 本地登�
 
 OAuth 不會增加權限。Access token 只取得「全域啟用工具」與「user allowance」的交集。不要手動組合或貼上 `/authorize` URL；`client_id`、redirect URI、challenge、state 與 resource 應由 client 產生並驗證。
 
-OAuth access token 預設一小時到期，client 會自動 refresh，直到選定的絕對 authorization 到期日；rotation 不會延長該日期。短暫 concurrency grace 內的重複 refresh 會被拒絕，但不會破壞目前 family；超過 grace 的 reuse 會被視為 replay 並撤銷整個 authorization。Dashboard 目前可能把這些短效 OAuth access records 與 static token 一起顯示，因此單一 access record 顯示 `expired` 不代表整個 authorization 已到期。
+OAuth access token 預設一小時到期，client 會自動 refresh，直到選定的絕對 authorization 到期日；rotation 不會延長該日期。短暫 concurrency grace 內的重複 refresh 會在同一 family 取得各自獨立的 rotated token pair；超過 grace 的 reuse 會被視為 replay 並撤銷整個 authorization。Dashboard 目前可能把這些短效 OAuth access records 與 static token 一起顯示，因此單一 access record 顯示 `expired` 不代表整個 authorization 已到期。
+
+部分 client 會為每個 conversation 建立獨立 MCP connection manager，因此可能在相隔數秒後送出相同 refresh token。能正確協調 refresh 的 client 應保留預設 grace。若 deployment 已實際驗證此類 multi-session client，可將 `FMCP_OAUTH_REFRESH_TOKEN_REUSE_GRACE_SECONDS` 提高至最多 60 秒；這會擴大有限的 replay window，不應用來掩蓋超過一分鐘的延遲。
 
 修改這些設定不會復原已撤銷的 family。若 client 顯示 Forgejo 已中斷連線，請移除或中斷舊 connector，然後重新完成 OAuth authorization。
 

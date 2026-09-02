@@ -129,7 +129,7 @@ FMCP_OAUTH_REFRESH_TOKEN_REUSE_GRACE_SECONDS=10
 
 Issuer 必須是無 path 的公開 HTTPS origin；resource 必須是同一 origin 後接 `/mcp`。DCR-only 環境請保持 CIMD allowlist 為空。只有經審查且以 HTTPS metadata URL 作為 client ID 的 client，才加入其精確 origin；不支援 wildcard、redirect、private address 或非 HTTPS CIMD fetch。
 
-Access token 維持短效，並由 MCP client 自動更新。`FMCP_OAUTH_REFRESH_TOKEN_TTL_DAYS` 是 consent 頁面的預設 authorization 期限，`FMCP_OAUTH_REFRESH_TOKEN_MAX_TTL_DAYS` 則限制可選的 1、7、30 與 90 天。Refresh rotation 絕不延長選定的絕對到期日。短暫 reuse grace 可避免同時請求誤撤銷正常 authorization；超過 grace 的舊 token replay 仍會撤銷整個 family。
+Access token 維持短效，並由 MCP client 自動更新。`FMCP_OAUTH_REFRESH_TOKEN_TTL_DAYS` 是 consent 頁面的預設 authorization 期限，`FMCP_OAUTH_REFRESH_TOKEN_MAX_TTL_DAYS` 則限制可選的 1、7、30 與 90 天。Refresh rotation 絕不延長選定的絕對到期日。在短暫 reuse grace 內，同時請求會在同一 family 取得各自獨立的 rotated token pair；超過 grace 的舊 token replay 仍會撤銷整個 family。若已驗證 multi-session client 的 refresh 延遲超過預設 10 秒，可將 deployment grace 設為最多 60 秒，並接受相應的有限 replay window。
 
 停用 `FMCP_OAUTH_ENABLED` 會立即使 OAuth access token 無法使用，但不影響 static Bearer token。Database downgrade 會先刪除 OAuth 建立的 MCP access records，再移除 linkage，避免它們被誤認為 static token。完整威脅分析請參閱 [OAuth 2.1 security and operations](security/oauth-2.1.md)。
 

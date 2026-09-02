@@ -133,7 +133,7 @@ FMCP_OAUTH_REFRESH_TOKEN_REUSE_GRACE_SECONDS=10
 
 The issuer must be the public HTTPS origin without a path. The resource must be the same origin followed by exactly `/mcp`. Keep `FMCP_OAUTH_CIMD_ALLOWED_ORIGINS=[]` for DCR-only operation. If a reviewed client uses an HTTPS URL as its client ID, add only that metadata document's exact origin; wildcards, redirects, private addresses and non-HTTPS fetches are rejected.
 
-The access token remains short-lived and is refreshed automatically by the MCP client. `FMCP_OAUTH_REFRESH_TOKEN_TTL_DAYS` is the default authorization duration selected at consent, while `FMCP_OAUTH_REFRESH_TOKEN_MAX_TTL_DAYS` caps the available 1, 7, 30 and 90-day choices. Rotation never extends the selected absolute expiry. The short reuse grace prevents simultaneous client requests from revoking an otherwise healthy authorization; an older replay still revokes the complete family.
+The access token remains short-lived and is refreshed automatically by the MCP client. `FMCP_OAUTH_REFRESH_TOKEN_TTL_DAYS` is the default authorization duration selected at consent, while `FMCP_OAUTH_REFRESH_TOKEN_MAX_TTL_DAYS` caps the available 1, 7, 30 and 90-day choices. Rotation never extends the selected absolute expiry. Inside the short reuse grace, simultaneous client requests receive independent rotated token pairs in the same family; an older replay still revokes the complete family. Multi-session clients validated with refresh delays above the 10-second default may use a deployment-specific grace of up to 60 seconds, accepting the corresponding bounded replay window.
 
 Before enabling OAuth:
 

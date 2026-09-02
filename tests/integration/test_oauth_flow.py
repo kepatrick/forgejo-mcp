@@ -11,7 +11,6 @@ from urllib.parse import parse_qs, urlsplit
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from mcp.server.auth.provider import TokenError
 from mcp.shared.auth import OAuthToken
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -451,7 +450,7 @@ async def issued_token_expiries(access_token: str, refresh_token: str) -> tuple[
     return access_expiry, refresh_expiry
 
 
-async def concurrent_refresh(client_id: str, refresh_token: str) -> tuple[str, str]:
+async def concurrent_refresh(client_id: str, refresh_token: str) -> list[tuple[str, str]]:
     assert DATABASE_URL is not None
     engine = create_async_engine(DATABASE_URL)
     factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -462,21 +461,17 @@ async def concurrent_refresh(client_id: str, refresh_token: str) -> tuple[str, s
     second = await service.load_refresh_token(client, refresh_token)
     assert first is not None
     assert second is not None
-    results = await asyncio.gather(
+    issued_tokens = await asyncio.gather(
         service.exchange_refresh_token(client, first, ["mcp:tools"]),
         service.exchange_refresh_token(client, second, ["mcp:tools"]),
-        return_exceptions=True,
     )
-    successes = [result for result in results if isinstance(result, OAuthToken)]
-    failures = [result for result in results if isinstance(result, BaseException)]
-    assert len(successes) == 1
-    assert len(failures) == 1
-    assert isinstance(failures[0], TokenError)
-    assert failures[0].error == "invalid_grant"
-    issued = successes[0]
-    assert issued.refresh_token is not None
+    assert all(isinstance(issued, OAuthToken) for issued in issued_tokens)
+    assert all(issued.refresh_token is not None for issued in issued_tokens)
+    assert len({issued.access_token for issued in issued_tokens}) == 2
+    assert len({issued.refresh_token for issued in issued_tokens}) == 2
+    pairs = [(issued.access_token, str(issued.refresh_token)) for issued in issued_tokens]
     await engine.dispose()
-    return issued.access_token, issued.refresh_token
+    return pairs
 
 
 async def age_rotated_refresh_token(refresh_token: str, age_seconds: int) -> None:
@@ -588,12 +583,15 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
         assert wrong_refresh_resource.status_code == 400
         assert wrong_refresh_resource.json()["error"] == "invalid_request"
 
-        second_access, second_refresh = asyncio.run(concurrent_refresh(client_id, first_refresh))
-        assert second_access != first_access
+        concurrent_tokens = asyncio.run(concurrent_refresh(client_id, first_refresh))
+        (second_access, second_refresh), (parallel_access, parallel_refresh) = concurrent_tokens
+        assert {second_access, parallel_access}.isdisjoint({first_access})
         assert_mcp_unauthorized(client, first_access)
         initialize_mcp(client, second_access)
-        _, second_refresh_expiry = asyncio.run(issued_token_expiries(second_access, second_refresh))
-        assert second_refresh_expiry == grant_expiry
+        initialize_mcp(client, parallel_access)
+        for access, refresh in concurrent_tokens:
+            _, concurrent_refresh_expiry = asyncio.run(issued_token_expiries(access, refresh))
+            assert concurrent_refresh_expiry == grant_expiry
 
         asyncio.run(
             age_rotated_refresh_token(
@@ -614,6 +612,7 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
         assert reused.status_code == 400
         assert reused.json()["error"] == "invalid_grant"
         assert_mcp_unauthorized(client, second_access)
+        assert_mcp_unauthorized(client, parallel_access)
 
         second_interaction = start_authorization(client, client_id, verifier)
         second_code = approve_authorization(client, second_interaction, login=False)
@@ -649,12 +648,15 @@ def test_complete_oauth21_flow_enforces_permissions_and_rotation(
         assert_mcp_unauthorized(disabled_client, disabled_oauth_access)
 
     audit_text = asyncio.run(audit_payloads())
+    assert '"action": "oauth.concurrent_refresh_recovered"' in audit_text
     for secret in {
         code,
         first_access,
         first_refresh,
         second_access,
         second_refresh,
+        parallel_access,
+        parallel_refresh,
         second_code,
         revocable_access,
         str(revocable["refresh_token"]),

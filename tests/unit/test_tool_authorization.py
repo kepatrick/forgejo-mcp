@@ -151,15 +151,11 @@ def test_repository_root_listing_accepts_an_omitted_or_empty_path() -> None:
     )
 
     assert not list(validator.iter_errors({"owner": "owner", "repo": "repo"}))
-    assert not list(
-        validator.iter_errors({"owner": "owner", "repo": "repo", "path": ""})
-    )
+    assert not list(validator.iter_errors({"owner": "owner", "repo": "repo", "path": ""}))
     file_validator = jsonschema.Draft202012Validator(
         get_tool("forgejo_get_file_content").input_schema
     )
-    assert list(
-        file_validator.iter_errors({"owner": "owner", "repo": "repo", "path": ""})
-    )
+    assert list(file_validator.iter_errors({"owner": "owner", "repo": "repo", "path": ""}))
 
 
 @pytest.mark.parametrize(
@@ -194,9 +190,7 @@ def test_batch_tool_authorization_loads_one_permission_snapshot() -> None:
         names = [tool.name for tool in list_tools()]
         globally_disabled = names[-1]
         settings = {
-            name: SimpleNamespace(enabled=True)
-            for name in names
-            if name != globally_disabled
+            name: SimpleNamespace(enabled=True) for name in names if name != globally_disabled
         }
         permissions = SimpleNamespace(
             settings=AsyncMock(return_value=settings),
@@ -213,9 +207,7 @@ def test_batch_tool_authorization_loads_one_permission_snapshot() -> None:
                     expires_at=None,
                     user=SimpleNamespace(
                         status=RecordStatus.ACTIVE,
-                        forgejo_credentials=[
-                            SimpleNamespace(status=CredentialStatus.ACTIVE)
-                        ],
+                        forgejo_credentials=[SimpleNamespace(status=CredentialStatus.ACTIVE)],
                     ),
                 )
             )

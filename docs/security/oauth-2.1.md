@@ -24,7 +24,7 @@ The ordinary MCP checks still require an active user, active Forgejo credential,
 - An explicit RFC 8707 resource on authorization and code/refresh exchanges must match the exact configured `/mcp` resource. Clients that omit it are bound to that same resource because this server exposes exactly one OAuth resource.
 - Authorization codes and browser interaction handles are high-entropy, hashed at rest, short-lived and single-use.
 - Access tokens are opaque, hashed at rest and short-lived. Refresh tokens are opaque, hashed at rest and rotate on use without extending the consent-selected absolute expiry.
-- An immediately duplicated refresh is rejected inside a bounded concurrency grace without revoking the replacement token. Reuse after that grace remains an anti-replay signal and revokes the entire family.
+- An immediately duplicated refresh receives an independent rotated token pair inside a bounded concurrency grace. Reuse after that grace remains an anti-replay signal and revokes the entire family.
 - Login and consent require an exact issuer `Origin`, SameSite cookies and CSRF validation. Administrator accounts cannot authorize user MCP access.
 - OAuth bodies and remote metadata responses are bounded. CIMD accepts only explicitly allowlisted HTTPS origins, rejects credentials/query/fragment, validates public DNS results and never follows redirects.
 - CIMD capability metadata is advertised only when at least one exact CIMD origin is configured; DCR-only deployments do not advertise an unavailable client-identification mode.
@@ -62,14 +62,14 @@ The ordinary MCP checks still require an active user, active Forgejo credential,
 
 **Impact.** Two simultaneous MCP calls could submit the same valid refresh token. The first request rotated it; the second was then classified as a replay and revoked the newly issued token plus the complete family. A normal client could therefore lose its connection after an access-token refresh even though the authorization was configured for 30 days.
 
-**Fix.** A duplicated refresh inside the deployment-bounded grace is still rejected and the old token remains unusable, but the replacement family is preserved and a credential-free audit event is recorded. A reuse outside the grace retains family-wide revocation. PostgreSQL integration coverage launches two refreshes against the same row and proves that exactly one succeeds, one returns `invalid_grant`, the absolute expiry is unchanged and the replacement remains usable.
+**Fix.** A duplicated refresh inside the deployment-bounded grace receives an independent rotated token pair in the same family, allowing clients with concurrent connection managers to converge without sharing a replacement token. The old token remains unusable after the grace, and later reuse retains family-wide revocation. PostgreSQL integration coverage launches two refreshes against the same row and proves that both receive distinct tokens, the absolute expiry is unchanged and replay after the grace revokes both branches. The recovery emits a credential-free `oauth.concurrent_refresh_recovered` audit event.
 
 No unresolved Critical, High or Medium OAuth finding is known after these patches.
 
 ## Residual risks
 
 - CIMD destination validation occurs before the HTTP client's own DNS connection. Exact origin allowlisting substantially limits exposure, but network egress policy remains the final defense against DNS rebinding. Keep the allowlist empty unless CIMD is required.
-- The concurrency grace trades immediate family revocation for availability only during its short configured window. A stolen old refresh token remains unable to obtain another token during that window; keep the default grace short and review `oauth.concurrent_refresh_rejected` audit events.
+- The concurrency grace trades immediate family revocation for availability only during its short configured window. A stolen old refresh token could obtain one independently rotated branch during that window; keep the grace as short as the approved clients permit, retain endpoint rate limits and review `oauth.concurrent_refresh_recovered` audit events.
 - Login/registration rate limits are in-memory because the supported deployment is a single application replica. Multi-replica operation requires a shared limiter before it is supported.
 - Client implementations and redirect URIs evolve independently. Re-run a live authorization test after a client or proxy upgrade.
 
@@ -92,10 +92,10 @@ The issuer must be the public HTTPS origin without a path. The resource must be 
 ## Validation evidence
 
 - Ruff, format and strict MyPy: pass.
-- Unit tests: 137 pass.
-- PostgreSQL suite: 145 pass, with one opt-in external Forgejo test skipped.
+- Unit tests: 139 pass.
+- PostgreSQL suite: 147 pass, with one opt-in external Forgejo test skipped.
 - Alembic upgrade through `20260902_0010`, downgrade to `20260902_0009`, and re-upgrade: pass.
-- Docker E2E Forgejo 16.0.2: selectable OAuth lifetime, safe duplicate refresh rejection and all 50 tools pass (comparison baseline only).
-- Docker E2E Forgejo 16.0.3: selectable OAuth lifetime, safe duplicate refresh rejection and all 50 tools pass (minimum supported release).
+- Docker E2E Forgejo 16.0.2: selectable OAuth lifetime, bounded concurrent refresh recovery and all 50 tools pass (comparison baseline only).
+- Docker E2E Forgejo 16.0.3: selectable OAuth lifetime, bounded concurrent refresh recovery and all 50 tools pass (minimum supported release).
 - MCP protocol negotiated in integration and Docker E2E: `2025-06-18`.
 - Forgejo PAT scopes remain `read:user`, `write:organization`, `write:repository` and `write:issue`; OAuth adds none.

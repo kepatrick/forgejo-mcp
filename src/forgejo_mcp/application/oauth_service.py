@@ -442,12 +442,26 @@ class OAuthService(
                 raise TokenError("invalid_grant", "refresh token is invalid")
             if record.revoked_at is not None:
                 raise TokenError("invalid_grant", "refresh token is invalid")
+            if record.resource != self.resource_url or not set(scopes) <= set(record.scopes):
+                raise TokenError("invalid_scope", "refresh token scope or audience is invalid")
+            client_record = await session.get(OAuthClient, record.client_id)
+            if client_record is None or client_record.client_id != client.client_id:
+                raise TokenError("invalid_grant", "refresh token is invalid")
             if record.rotated_at is not None:
                 reuse_age_seconds = (now - record.rotated_at).total_seconds()
                 if reuse_age_seconds <= self.settings.oauth_refresh_token_reuse_grace_seconds:
+                    token = await self._issue_token_pair(
+                        session,
+                        client_record=client_record,
+                        user_id=record.user_id,
+                        scopes=scopes,
+                        resource=record.resource,
+                        family_id=record.family_id,
+                        refresh_expires_at=record.expires_at,
+                    )
                     session.add(
                         ManagementAuditEvent(
-                            action="oauth.concurrent_refresh_rejected",
+                            action="oauth.concurrent_refresh_recovered",
                             target_type="oauth_client",
                             target_id=str(record.client_id),
                             details={
@@ -458,15 +472,10 @@ class OAuthService(
                         )
                     )
                     await session.commit()
-                    raise TokenError("invalid_grant", "refresh token was already rotated")
+                    return token
                 await self._revoke_family(session, record.family_id, now)
                 await session.commit()
                 raise TokenError("invalid_grant", "refresh token reuse was detected")
-            if record.resource != self.resource_url or not set(scopes) <= set(record.scopes):
-                raise TokenError("invalid_scope", "refresh token scope or audience is invalid")
-            client_record = await session.get(OAuthClient, record.client_id)
-            if client_record is None or client_record.client_id != client.client_id:
-                raise TokenError("invalid_grant", "refresh token is invalid")
             record.rotated_at = now
             if record.mcp_token_id is not None:
                 await self._revoke_mcp_token(session, record.mcp_token_id, now)

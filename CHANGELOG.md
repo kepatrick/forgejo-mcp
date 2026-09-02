@@ -50,6 +50,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Changed
 
+- Batch MCP tool-discovery authorization against one permission snapshot, eliminating repeated registry writes and per-tool SQL reloads without changing deny-by-default decisions.
+- Treat an empty optional repository-content path as the repository root, avoiding repeated validation failures from MCP clients that serialize omitted strings as empty values.
 - Defined Forgejo 16.0.3 as the minimum supported release; the locked 16.0.2 contract and E2E run remain comparison evidence only and do not extend the published support range.
 - Add a permanent authenticated Dashboard control for changing the current account password, with confirmation and automatic revocation of other sessions.
 - Support private Forgejo instances with signed-in-only API access by deriving the

@@ -138,8 +138,13 @@ def build_mcp_runtime(
         visible: list[Tool] = []
         async with session_factory_provider()() as session:
             permissions = ToolPermissionService(session)
-            for spec in list_tools():
-                decision = await permissions.decision(token_id=token_id, tool_name=spec.name)
+            specs = list_tools()
+            decisions = await permissions.decisions(
+                token_id=token_id,
+                tool_names=(spec.name for spec in specs),
+            )
+            for spec in specs:
+                decision = decisions[spec.name]
                 if decision.allowed:
                     visible.append(
                         Tool(

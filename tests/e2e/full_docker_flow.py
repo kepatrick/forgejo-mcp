@@ -574,7 +574,10 @@ def run_mcp_flow(mcp_tokens: dict[str, str]) -> None:
     assert any(item["title"] == "v1" for item in milestones["items"])
     print("PASS MCP principals, repository metadata, branches, labels, and milestones")
 
-    root = developer.call("forgejo_list_repository_contents", {**repository, "ref": "main"})
+    root = developer.call(
+        "forgejo_list_repository_contents",
+        {**repository, "path": "", "ref": "main"},
+    )
     readme = next(item for item in root["items"] if item["path"] == "README.md")
     main_commit = developer.call(
         "forgejo_commit_changes",

@@ -1,7 +1,14 @@
+import asyncio
+import uuid
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
+
 import jsonschema
 import pytest
 
+from forgejo_mcp.application.tool_permission_service import ToolPermissionService
 from forgejo_mcp.authorization.tools import ToolAuthorizationContext, authorize_tool
+from forgejo_mcp.db.models import CredentialStatus, RecordStatus
 from forgejo_mcp.tools import get_tool, list_tools
 
 
@@ -138,6 +145,23 @@ def test_file_path_tool_schema_rejects_dot_segments(path: str) -> None:
     )
 
 
+def test_repository_root_listing_accepts_an_omitted_or_empty_path() -> None:
+    validator = jsonschema.Draft202012Validator(
+        get_tool("forgejo_list_repository_contents").input_schema
+    )
+
+    assert not list(validator.iter_errors({"owner": "owner", "repo": "repo"}))
+    assert not list(
+        validator.iter_errors({"owner": "owner", "repo": "repo", "path": ""})
+    )
+    file_validator = jsonschema.Draft202012Validator(
+        get_tool("forgejo_get_file_content").input_schema
+    )
+    assert list(
+        file_validator.iter_errors({"owner": "owner", "repo": "repo", "path": ""})
+    )
+
+
 @pytest.mark.parametrize(
     ("failed_check", "reason"),
     [
@@ -161,3 +185,56 @@ def test_tool_authorization_allows_only_when_every_layer_passes() -> None:
 
     assert decision.allowed is True
     assert decision.reason == "allowed"
+
+
+def test_batch_tool_authorization_loads_one_permission_snapshot() -> None:
+    async def exercise() -> None:
+        token_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+        names = [tool.name for tool in list_tools()]
+        globally_disabled = names[-1]
+        settings = {
+            name: SimpleNamespace(enabled=True)
+            for name in names
+            if name != globally_disabled
+        }
+        permissions = SimpleNamespace(
+            settings=AsyncMock(return_value=settings),
+            allowance_names=AsyncMock(return_value=set(names)),
+            grant_names=AsyncMock(return_value=set(names)),
+        )
+        tokens = SimpleNamespace(
+            get=AsyncMock(
+                return_value=SimpleNamespace(
+                    id=token_id,
+                    user_id=user_id,
+                    enabled=True,
+                    revoked_at=None,
+                    expires_at=None,
+                    user=SimpleNamespace(
+                        status=RecordStatus.ACTIVE,
+                        forgejo_credentials=[
+                            SimpleNamespace(status=CredentialStatus.ACTIVE)
+                        ],
+                    ),
+                )
+            )
+        )
+        service = ToolPermissionService(MagicMock())
+        service.permissions = permissions
+        service.tokens = tokens
+
+        decisions = await service.decisions(
+            token_id=token_id,
+            tool_names=(*names, "forgejo_unknown", names[0]),
+        )
+
+        assert decisions[names[0]].allowed is True
+        assert decisions[globally_disabled].reason == "tool_globally_disabled"
+        assert decisions["forgejo_unknown"].reason == "token_invalid"
+        tokens.get.assert_awaited_once_with(token_id)
+        permissions.settings.assert_awaited_once_with()
+        permissions.allowance_names.assert_awaited_once_with(user_id)
+        permissions.grant_names.assert_awaited_once_with(token_id)
+
+    asyncio.run(exercise())

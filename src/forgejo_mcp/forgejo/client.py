@@ -429,7 +429,7 @@ class ForgejoClient:
         ref: str | None,
     ) -> BoundedList[dict[str, Any]]:
         suffix = "contents"
-        if path is not None:
+        if path:
             suffix += f"/{quote(_file_path(path), safe='/')}"
         params = {"ref": _ref_value(ref, "ref")} if ref is not None else None
         payload = await self._get_json(

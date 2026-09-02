@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Iterable
 from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -118,11 +119,17 @@ class ToolPermissionService:
         return tool_names
 
     async def decision(self, *, token_id: uuid.UUID, tool_name: str) -> ToolAuthorizationDecision:
-        spec = get_tool(tool_name)
-        await self._sync_registry()
+        return (await self.decisions(token_id=token_id, tool_names=(tool_name,)))[tool_name]
+
+    async def decisions(
+        self, *, token_id: uuid.UUID, tool_names: Iterable[str]
+    ) -> dict[str, ToolAuthorizationDecision]:
+        """Authorize several tools from one consistent permission snapshot."""
+        names = tuple(dict.fromkeys(tool_names))
         record = await self.tokens.get(token_id)
-        if spec is None or record is None:
-            return authorize_tool(_context(token_valid=False))
+        denied = authorize_tool(_context(token_valid=False))
+        if record is None:
+            return {name: denied for name in names}
         settings = await self.permissions.settings()
         allowances = await self.permissions.allowance_names(record.user_id)
         grants = await self.permissions.grant_names(record.id)
@@ -136,16 +143,22 @@ class ToolPermissionService:
             credential.status == CredentialStatus.ACTIVE
             for credential in record.user.forgejo_credentials
         )
-        return authorize_tool(
-            ToolAuthorizationContext(
-                token_valid=token_valid,
-                user_enabled=record.user.status == RecordStatus.ACTIVE,
-                global_tool_enabled=_setting_enabled(settings, tool_name),
-                user_allowed_tool=tool_name in allowances,
-                token_has_tool_grant=tool_name in grants,
-                forgejo_credential_configured=credential_configured,
+        decisions: dict[str, ToolAuthorizationDecision] = {}
+        for name in names:
+            if get_tool(name) is None:
+                decisions[name] = denied
+                continue
+            decisions[name] = authorize_tool(
+                ToolAuthorizationContext(
+                    token_valid=token_valid,
+                    user_enabled=record.user.status == RecordStatus.ACTIVE,
+                    global_tool_enabled=_setting_enabled(settings, name),
+                    user_allowed_tool=name in allowances,
+                    token_has_tool_grant=name in grants,
+                    forgejo_credential_configured=credential_configured,
+                )
             )
-        )
+        return decisions
 
     async def _sync_registry(self) -> None:
         await self.permissions.sync_registry(list_tools())

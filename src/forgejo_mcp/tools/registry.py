@@ -164,6 +164,10 @@ _FILE_PATH = {
         r"(?!.*\/\.{1,2}(?:/|$))(?!.*\/\.{1,2}\s*$)[^\x00-\x1f\x7f]+$"
     ),
 }
+_OPTIONAL_ROOT_FILE_PATH = {
+    "oneOf": [_FILE_PATH, {"type": "string", "const": ""}],
+    "description": "Omit this field or use an empty string to list the repository root.",
+}
 _NUMBER = {"type": "integer", "minimum": 1}
 _TIMESTAMP = {"type": "string", "format": "date-time"}
 _TITLE = {"type": "string", "minLength": 1, "maxLength": 255}
@@ -1165,7 +1169,13 @@ _TOOL_SPECS = (
         description="List files and directories at a repository path and ref.",
         risk="read",
         input_schema=_object_schema(
-            {"owner": _OWNER, "repo": _REPO, "path": _FILE_PATH, "ref": _REF}, ["owner", "repo"]
+            {
+                "owner": _OWNER,
+                "repo": _REPO,
+                "path": _OPTIONAL_ROOT_FILE_PATH,
+                "ref": _REF,
+            },
+            ["owner", "repo"],
         ),
         output_schema=_object_schema(
             {

@@ -25,7 +25,7 @@ The ordinary MCP checks still require an active user, active Forgejo credential,
 - Authorization codes and browser interaction handles are high-entropy, hashed at rest, short-lived and single-use.
 - Access tokens are opaque, hashed at rest and short-lived. Refresh tokens are opaque, hashed at rest and rotate on use without extending the consent-selected absolute expiry.
 - An immediately duplicated refresh receives the exact first replacement pair from a bounded, ephemeral in-memory recovery entry. A missing entry rejects the duplicate without creating a branch or revoking the successful rotation. Reuse after the grace remains an anti-replay signal and revokes the entire family.
-- Revoking an active OAuth access record from either Dashboard revokes its complete refresh-token family, so the client cannot regain access by refreshing.
+- Refresh rotation and revocation serialize on a persisted family row. Revoking an active OAuth access record from either Dashboard revokes its complete refresh-token family, including a replacement created by a concurrent refresh.
 - Login and consent require an exact issuer `Origin`, SameSite cookies and CSRF validation. Administrator accounts cannot authorize user MCP access.
 - OAuth bodies and remote metadata responses are bounded. CIMD accepts only explicitly allowlisted HTTPS origins, rejects credentials/query/fragment, validates public DNS results and never follows redirects.
 - CIMD capability metadata is advertised only when at least one exact CIMD origin is configured; DCR-only deployments do not advertise an unavailable client-identification mode.
@@ -71,12 +71,19 @@ The ordinary MCP checks still require an active user, active Forgejo credential,
 
 **Fix.** User and Admin Dashboard token revocation now resolves the OAuth family and atomically revokes every refresh and access record in that family. PostgreSQL integration coverage proves that both the displayed access token and its refresh path are rejected afterward.
 
+### OAUTH-007 — High — Concurrent refresh and revocation could leave a replacement valid
+
+**Impact.** Revocation could begin while refresh rotation held the current refresh row. PostgreSQL then waited for that row but retained a statement snapshot that did not include the newly committed replacement, allowing its access and refresh tokens to survive a completed family revocation.
+
+**Fix.** Every OAuth family now has a persisted lock/state row. Rotation locks and verifies that row before the current refresh record; every revocation takes the same lock before enumerating descendants. Whichever transaction wins is authoritative: revocation either sees and disables the committed replacement, or rotation resumes after revocation and fails closed. Migration `20260908_0011` backfills existing families and revokes every descendant of any family with prior revocation evidence. A deterministic PostgreSQL regression test waits for real lock contention and proves that the replacement cannot authenticate after revocation.
+
 No unresolved Critical, High or Medium OAuth finding is known after these patches.
 
 ## Residual risks
 
 - CIMD destination validation occurs before the HTTP client's own DNS connection. Exact origin allowlisting substantially limits exposure, but network egress policy remains the final defense against DNS rebinding. Keep the allowlist empty unless CIMD is required.
-- The concurrency grace lets a duplicate holder obtain the same replacement pair during its short configured window. It cannot create an independent branch. Keep the grace as short as approved clients permit, set it to `0` for strict replay handling, retain endpoint rate limits and review `oauth.concurrent_refresh_recovered` and `oauth.concurrent_refresh_rejected` events. The recovery cache is process-local; multi-replica deployments are not supported.
+- The concurrency grace lets a duplicate holder obtain the same replacement pair during its short configured window. It cannot create an independent branch. Keep the grace as short as approved clients permit, set it to `0` for strict replay handling, retain endpoint rate limits and review `oauth.concurrent_refresh_recovered` and `oauth.concurrent_refresh_rejected` events. Family rotation/revocation is serialized in PostgreSQL across processes, but duplicate-response recovery remains process-local; multi-replica deployments are not supported.
+- Reverse proxies and bot controls can distinguish machine clients even when OAuth browser authorization looks identical. Diagnose discovery, DCR, consent and token exchange separately; see [OAuth client and reverse-proxy troubleshooting](../oauth-client-edge-troubleshooting.md).
 - Login/registration rate limits are in-memory because the supported deployment is a single application replica. Multi-replica operation requires a shared limiter before it is supported.
 - Client implementations and redirect URIs evolve independently. Re-run a live authorization test after a client or proxy upgrade.
 
@@ -99,9 +106,9 @@ The issuer must be the public HTTPS origin without a path. The resource must be 
 ## Validation evidence
 
 - Ruff, format and strict MyPy: pass.
-- Test suite without PostgreSQL: 140 pass and 9 database/external tests are skipped.
-- PostgreSQL suite: 148 pass, with one opt-in external Forgejo test skipped.
-- Alembic upgrade through `20260902_0010`, downgrade to `20260902_0009`, and re-upgrade: pass.
+- Test suite without PostgreSQL: 142 pass and 10 database/external tests are skipped.
+- PostgreSQL suite: 151 pass, with one opt-in external Forgejo test skipped.
+- Alembic upgrade through `20260908_0011`, downgrade to `20260902_0010`, and re-upgrade: pass.
 - Docker E2E Forgejo 16.0.2: selectable OAuth lifetime, idempotent concurrent refresh recovery, Dashboard family revocation and all 50 tools pass (comparison baseline only).
 - Docker E2E Forgejo 16.0.3: selectable OAuth lifetime, idempotent concurrent refresh recovery, Dashboard family revocation and all 50 tools pass (minimum supported release).
 - MCP protocol negotiated in integration and Docker E2E: `2025-06-18`.

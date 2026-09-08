@@ -8,6 +8,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Fixed
 
+- Decode compressed Forgejo response bodies exactly once while preserving decompressed-size limits for `gzip` and `deflate` responses.
+- Serialize OAuth refresh rotation and family revocation in PostgreSQL so a concurrently issued replacement cannot survive completed family revocation.
 - Make bounded concurrent OAuth refresh recovery idempotent so multi-session MCP clients such as Codex receive the same replacement pair instead of creating durable token-family forks.
 - Revoke the complete OAuth refresh-token family when its active access token is revoked from the User or Admin Dashboard.
 - Redact schemeless URL credentials at path boundaries and end-of-string while preserving ordinary time-like audit text.
@@ -72,6 +74,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Security
 
+- Persist OAuth family revocation state and fail closed on missing or revoked family linkage; the migration also disables descendants of any historically revoked family.
 - Keep OAuth disabled by default; require exact issuer/resource configuration, public PKCE clients, bounded request/metadata bodies, no CIMD redirects, public DNS destinations, Same-Origin forms and CSRF tokens.
 - Mark OAuth-created MCP tokens explicitly and delete them during migration downgrade so loss of OAuth linkage cannot turn them into valid static Bearer tokens.
 - Bind all OAuth grants to the configured MCP resource, reject every conflicting explicit RFC 8707 resource, and reject confidential-client metadata instead of silently downgrading it to a public client.

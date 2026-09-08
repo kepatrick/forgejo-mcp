@@ -128,6 +128,7 @@ OAuth clients use local Forgejo MCP login and explicit time-bounded consent; the
 | Configure Forgejo, users and permissions | [Administrator guide](docs/admin-guide.md) |
 | Create a PAT and MCP token | [User guide](docs/user-guide.md) |
 | Connect an MCP client | [MCP client configuration](docs/mcp-client-configuration.md) |
+| Diagnose OAuth client or reverse-proxy failures | [OAuth client and reverse-proxy troubleshooting](docs/oauth-client-edge-troubleshooting.md) |
 | Enable and review OAuth 2.1 | [OAuth 2.1 security and operations](docs/security/oauth-2.1.md) |
 | Review current constraints | [Known limitations](docs/known-limitations.md) |
 | Inspect tool inputs and behavior | [v1 tool catalog](docs/tools/v1-tool-catalog.md) |

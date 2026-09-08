@@ -13,7 +13,7 @@ The branch must preserve:
 - GitHub Actions read-only repository permissions;
 - the global, user and token authorization intersection.
 
-The 2026-09-02 follow-up specifically changes OAuth client compatibility, browser CORS, repository/ref/file segment validation, Forgejo URL/TLS deployment policy, audit redaction, trusted-proxy address handling, atomic rate-limit reservations and loopback Compose publishing.
+The 2026-09-02 follow-up specifically changes OAuth client compatibility, browser CORS, repository/ref/file segment validation, Forgejo URL/TLS deployment policy, audit redaction, trusted-proxy address handling, atomic rate-limit reservations and loopback Compose publishing. The 2026-09-08 upstream review additionally identified compressed-response reconstruction and an OAuth refresh/revocation race at commit `cf40e9b`; review their regression fixes rather than relying on the earlier audit verdict.
 
 ## Evidence to read first
 
@@ -32,6 +32,9 @@ The 2026-09-02 follow-up specifically changes OAuth client compatibility, browse
 - Can `verify_tls=false` be selected or remain effective from stored state without a current deployment-owner decision?
 - Do OAuth omission handling, CORS and Origin validation preserve resource binding, Same-Origin controls and native MCP clients?
 - Did any change add a Forgejo PAT scope, MCP tool, tool grant, GitHub permission, redirect following or arbitrary outbound destination?
+- Does bounded `gzip`/`deflate` handling decode exactly once while still enforcing the limit on decompressed bytes?
+- Do refresh rotation and every family-revocation path take the same persisted family lock in a deadlock-safe order, and does migration `20260908_0011` fail closed for a historically partially revoked family?
+- Does the reverse-proxy troubleshooting guide preserve OAuth, Same-Origin and CSRF controls instead of recommending unstable IP or User-Agent allowlists?
 
 ## Reproduction commands
 
@@ -68,7 +71,7 @@ Also re-run the repository's Gitleaks and detect-secrets scans against both curr
 
 ## Maintainer validation before handoff
 
-- Python with PostgreSQL: 149 collected, 148 passed, 1 external-credential E2E skipped; without PostgreSQL, 140 passed and 9 database/external tests were skipped.
+- Python with PostgreSQL: 152 collected, 151 passed, 1 external-credential E2E skipped; without PostgreSQL, 142 passed and 10 database/external tests were skipped.
 - Ruff check/format and strict MyPy: passed.
 - Frontend ESLint, TypeScript and Vite production build: passed.
 - `pip-audit` and `npm audit`: 0 known vulnerabilities.

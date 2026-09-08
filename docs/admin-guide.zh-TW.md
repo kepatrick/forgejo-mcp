@@ -131,6 +131,8 @@ Issuer 必須是無 path 的公開 HTTPS origin；resource 必須是同一 origi
 
 Access token 維持短效，並由 MCP client 自動更新。`FMCP_OAUTH_REFRESH_TOKEN_TTL_DAYS` 是 consent 頁面的預設 authorization 期限，`FMCP_OAUTH_REFRESH_TOKEN_MAX_TTL_DAYS` 則限制可選的 1、7、30 與 90 天。Refresh rotation 絕不延長選定的絕對到期日。在短暫 reuse grace 內，重複請求會取得第一次 rotation 的同一組 replacement token，而不會建立獨立 family 分支；若 process-local recovery entry 不存在，重複請求會 fail closed，但不撤銷已成功的 rotation。超過 grace 的舊 token replay 仍會撤銷整個 family。若已驗證 multi-session client 的 refresh 延遲超過預設 10 秒，可將 deployment grace 設為最多 60 秒；設為 `0` 可啟用嚴格 replay 處理。
 
+DCR、consent、token exchange 與 Cloudflare 的分階段診斷，請參閱英文版 [OAuth client and reverse-proxy troubleshooting](oauth-client-edge-troubleshooting.md)。沿用既有 registration 的 client 能成功，並不代表新 client 的 DCR request 可以抵達 App。
+
 停用 `FMCP_OAUTH_ENABLED` 會立即使 OAuth access token 無法使用，但不影響 static Bearer token。Database downgrade 會先刪除 OAuth 建立的 MCP access records，再移除 linkage，避免它們被誤認為 static token。完整威脅分析請參閱 [OAuth 2.1 security and operations](security/oauth-2.1.md)。
 
 ## 8. 檢查稽核紀錄

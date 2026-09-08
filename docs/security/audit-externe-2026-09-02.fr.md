@@ -224,6 +224,33 @@ Les **2 failles HAUTES sont réellement corrigées** (confirmé par attaque, pas
 
 ---
 
+## Revue mainteneur upstream du commit `cf40e9b` — 2026-09-08
+
+> Cette section est postérieure aux audits Claude ci-dessus. Elle conserve leurs verdicts historiques tout en enregistrant les deux blocages techniques reproduits par le mainteneur upstream et vérifiés localement.
+
+Le mainteneur a demandé de remplacer la contribution monolithique par trois Pull Requests indépendantes : compatibilité Forgejo 16.0.3, durcissement/déploiement, puis OAuth/migrations. Cette demande est fondée : le diff de `cf40e9b` mélangeait effectivement ces trois périmètres et empêchait une revue indépendante des risques.
+
+| Blocage reproduit | Sévérité | Preuve | Disposition |
+|---|---|---|---|
+| Double décodage des réponses Forgejo compressées | Fonctionnel bloquant | HTTPX décode `gzip`/`deflate` pendant `aiter_bytes()`, puis la reconstruction conservait `Content-Encoding` et redéclenchait le décodeur. Les deux témoins échouaient avec `httpx.DecodingError`. | **Corrigé et testé** : suppression des en-têtes d'encodage et de longueur filaire après contrôle de la taille décompressée ; les tests `gzip` et `deflate` passent. |
+| Rotation de refresh concurrente avec révocation familiale | **Haute** | Une révocation PostgreSQL bloquée sur le refresh courant conservait un instantané ne contenant pas le remplacement ensuite commité. Après la révocation, le nouvel access token restait authentifiable. | **Corrigé et testé** : ligne persistée par famille, verrou transactionnel commun à la rotation et à toutes les révocations, refus si famille absente/révoquée, migration réparant les familles historiquement partielles. Le test attend une contention PostgreSQL réelle et prouve que le remplacement est inutilisable. |
+
+La documentation opérationnelle distingue désormais découverte OAuth, DCR, login/consent et échange de token. Elle consigne aussi le diagnostic observé où un enregistrement Claude existant continuait à fonctionner tandis qu'un nouveau DCR OpenAI/Codex était bloqué par un contrôle bot Cloudflare avant d'atteindre l'application. Aucun hostname privé, adresse IP, token, invitation, identifiant de compte ou identifiant de requête de production n'est publié. Les allowlists par IP cloud ou `User-Agent` ne sont pas recommandées.
+
+### Validation après ces deux correctifs
+
+- Python sans PostgreSQL : **142 réussis et 10 ignorés**.
+- Python avec PostgreSQL : **152 collectés, 151 réussis et 1 E2E à credentials externes ignoré**.
+- Test de course avant correctif : échec démontré, le remplacement restait valide.
+- Même test après correctif : réussi avec contention de verrou PostgreSQL observée.
+- Migration Alembic `20260908_0011` : upgrade, downgrade vers `20260902_0010`, puis re-upgrade réussis.
+- Ruff check/format et MyPy strict : réussis.
+- Aucun scope PAT Forgejo, outil MCP, grant MCP ou droit GitHub supplémentaire.
+
+Les deux suites Docker E2E ont ensuite été rejouées avec les correctifs : Forgejo 16.0.3 minimum supporté et Forgejo 16.0.2 comme référence comparative passent OAuth, MCP `2025-06-18` et les 50 outils. La comparaison Swagger conserve exactement 2 différences structurelles et 0 différence d'endpoint.
+
+---
+
 ## 🎯 Verdict initial de l'audit, conservé à titre historique
 
 **Aucun malware, aucune backdoor, aucune dépendance piégée.** Code de facture professionnelle, architecture volontairement fail-closed, la plupart des revendications de sécurité sont vérifiées dans le code.

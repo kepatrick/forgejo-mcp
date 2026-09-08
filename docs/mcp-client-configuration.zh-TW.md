@@ -30,7 +30,7 @@ Client 會使用 PKCE S256、公開 client registration、Forgejo MCP 本地登�
 
 OAuth 不會增加權限。Access token 只取得「全域啟用工具」與「user allowance」的交集。不要手動組合或貼上 `/authorize` URL；`client_id`、redirect URI、challenge、state 與 resource 應由 client 產生並驗證。
 
-OAuth access token 預設一小時到期，client 會自動 refresh，直到選定的絕對 authorization 到期日；rotation 不會延長該日期。短暫 concurrency grace 內的重複 refresh 會取得第一次 rotation 的同一組 replacement token，而不會建立獨立分支；若 process-local recovery entry 不存在，重複請求會被拒絕，但已成功的 rotation 不會被撤銷。超過 grace 的 reuse 會被視為 replay 並撤銷整個 authorization。從 Dashboard 撤銷目前有效的 OAuth access record 也會撤銷整個 family。Dashboard 目前可能把這些短效 OAuth access records 與 static token 一起顯示，因此單一 access record 顯示 `expired` 不代表整個 authorization 已到期。
+OAuth access token 預設一小時到期，client 會自動 refresh，直到選定的絕對 authorization 到期日；rotation 不會延長該日期。短暫 concurrency grace 內的重複 refresh 會取得第一次 rotation 的同一組 replacement token，而不會建立獨立分支；若 process-local recovery entry 不存在，重複請求會被拒絕，但已成功的 rotation 不會被撤銷。超過 grace 的 reuse 會被視為 replay 並撤銷整個 authorization。Rotation 與 family revocation 會透過 PostgreSQL 中持久化的 family lock 序列化，因此與撤銷同時建立的 replacement 也無法存活。從 Dashboard 撤銷目前有效的 OAuth access record 會撤銷整個 family。Dashboard 目前可能把這些短效 OAuth access records 與 static token 一起顯示，因此單一 access record 顯示 `expired` 不代表整個 authorization 已到期。
 
 部分 client 會為每個 conversation 建立獨立 MCP connection manager，因此可能在相隔數秒後送出相同 refresh token。能正確協調 refresh 的 client 應保留預設 grace。若 deployment 已實際驗證此類 multi-session client，可將 `FMCP_OAUTH_REFRESH_TOKEN_REUSE_GRACE_SECONDS` 提高至最多 60 秒；設為 `0` 可啟用嚴格 replay 處理。Recovery cache 有容量限制、生命週期短且僅存在單一 process，因此目前仍不支援 multi-replica deployment。
 
@@ -148,6 +148,10 @@ OAuth 使用時，還要確認 OAuth 已啟用，且 access token 沒有因 refr
 ### OAuth 回傳 `invalid_request`
 
 確認 client 使用 PKCE S256、精確註冊的 redirect URI與唯一的 `mcp:tools` scope。明確提供的 RFC 8707 `resource` 必須是 server 公告的精確 `/mcp` URL；省略 resource 也受支援，因為本 server 只有一個固定 MCP resource，且所有 token 都會綁定至該 resource。
+
+### OAuth registration 回傳 403，或 consent 後失敗
+
+先辨識失敗發生在 discovery、`POST /register`、browser authorization 或 `POST /token`。已註冊的 client 可能仍可運作，而新 client 同時被擋在 DCR。若前方有 reverse proxy 或 bot protection，請先比對 edge event 與 App request log，再修改 OAuth 設定。詳見英文版 [OAuth client and reverse-proxy troubleshooting](oauth-client-edge-troubleshooting.md)，其中包含已測試的 Claude/OpenAI 與 Cloudflare failure patterns。
 
 ### 連線成功但沒有列出工具
 

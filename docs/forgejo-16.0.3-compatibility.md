@@ -36,6 +36,8 @@ The locked machine-readable result is in `tests/contracts/forgejo-16.0.2-to-16.0
 
 No endpoint adapter was changed. The existing hand-written bounded HTTP client remains the correct implementation; this repository does not contain a generated OpenAPI client to regenerate.
 
+The transport regression reported during upstream review was version-independent but relevant to real Forgejo deployments: HTTPX had already decoded a compressed stream before the bounded response was reconstructed with the original `Content-Encoding`. The reconstruction now removes encoding and wire-length headers after decoded-size enforcement. Regression tests cover both `gzip` and `deflate`; no endpoint contract or Forgejo permission changes.
+
 | Required area | E2E route or MCP operation | 16.0.2 | 16.0.3 | Adapter change |
 | --- | --- | --- | --- | --- |
 | Login | Forgejo Basic authentication for PAT creation; Dashboard session login | Covered | Covered | None |
@@ -83,6 +85,13 @@ Validated on 2026-08-31:
 - PostgreSQL-backed suite: 104 passed, 1 opt-in external-Forgejo test skipped.
 - Ruff lint and format, mypy, ESLint, TypeScript typecheck and React production build: passed.
 - MCP SDK 1.28.1 reports `2025-06-18` among its supported protocol versions, and both integration and E2E initialization succeed with that exact version.
+
+Revalidated on 2026-09-08 after the compressed-response and OAuth family-serialization fixes:
+
+- automatic Swagger comparison: passed with the same 2 locked structural differences and 0 endpoint differences;
+- complete Docker E2E on the minimum Forgejo 16.0.3 release: all 50 tools and OAuth/MCP `2025-06-18` passed;
+- complete Docker E2E on the Forgejo 16.0.2 comparison baseline: all 50 tools and OAuth/MCP `2025-06-18` passed;
+- Python with PostgreSQL: 151 passed and the opt-in external-credential test was skipped.
 
 ## Continuous verification
 

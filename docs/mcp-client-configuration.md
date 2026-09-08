@@ -155,6 +155,10 @@ Confirm that the client uses PKCE S256, its exact registered redirect URI and th
 
 The browser request must originate from the exact configured issuer origin. Restart the flow rather than reusing an old consent URL. Sign in with the local user account, not the administrator account and not the Forgejo account password.
 
+### OAuth registration returns 403 or fails after consent
+
+Determine whether discovery, `POST /register`, browser authorization or `POST /token` failed. A client that was registered earlier can continue to work while a new client is blocked at DCR. If a reverse proxy or bot product is present, correlate its event with the App request log before changing OAuth settings. See [OAuth client and reverse-proxy troubleshooting](oauth-client-edge-troubleshooting.md), including the tested Claude/OpenAI and Cloudflare failure patterns.
+
 ### The connection succeeds but no tools are listed
 
 Confirm in the Dashboard that the Forgejo credential is active and verified. Ask an administrator to review the global tool setting, user allowance and token grant.

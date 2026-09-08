@@ -144,6 +144,8 @@ Before enabling OAuth:
 5. apply the database migration and verify both metadata endpoints;
 6. run a live connection with each intended client before approving it for users.
 
+For stage-by-stage DCR, consent, token-exchange and Cloudflare diagnostics, see [OAuth client and reverse-proxy troubleshooting](oauth-client-edge-troubleshooting.md). A client that reuses an existing registration is not evidence that a new client's DCR request can reach the App.
+
 Useful checks:
 
 ```text

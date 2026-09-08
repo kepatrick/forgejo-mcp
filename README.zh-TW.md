@@ -2,6 +2,8 @@
 
 [English](README.md)
 
+維護者發布流程：[版本化 Docker image 與 GitHub Release](docs/releasing.zh-TW.md)。
+
 Forgejo MCP 是一套自架的 [Model Context Protocol](https://modelcontextprotocol.io/) 伺服器與管理 Dashboard，讓公司能以集中治理、可控且可觀測的方式，開放 AI client 操作既有 Forgejo instance。
 
 每位使用者透過自己的 scoped Forgejo personal access token（PAT）操作 Forgejo；管理員則決定哪些 MCP 工具可全域使用、可提供給特定使用者，以及可授權給只顯示一次的 MCP token。

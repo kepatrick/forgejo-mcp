@@ -1,12 +1,16 @@
 name: CI
 
 on:
+  workflow_call:
   push:
     branches:
       - main
   pull_request:
     branches:
       - main
+
+permissions:
+  contents: read
 
 jobs:
   backend:

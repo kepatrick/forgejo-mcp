@@ -2,6 +2,8 @@
 
 [繁體中文](README.zh-TW.md)
 
+Maintainers: [versioned Docker image and GitHub Release workflow](docs/releasing.md).
+
 Forgejo MCP is a self-hosted [Model Context Protocol](https://modelcontextprotocol.io/) server and management Dashboard that gives organizations centrally governed, controlled and observable AI access to an existing Forgejo instance.
 
 Users connect with their own scoped Forgejo personal access tokens (PATs). Administrators decide which MCP tools are enabled globally, available to each user and granted to each show-once MCP token.

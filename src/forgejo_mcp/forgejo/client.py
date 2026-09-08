@@ -2155,9 +2155,16 @@ async def _bounded_response(response: httpx.Response) -> httpx.Response:
         content.extend(chunk)
         if len(content) > MAX_FORGEJO_RESPONSE_BYTES:
             raise ExternalServiceUnavailable("Forgejo response is too large")
+    headers = httpx.Headers(response.headers)
+    # aiter_bytes() has already decoded every Content-Encoding. Keeping the
+    # encoding or wire-length headers would make the reconstructed response
+    # decode the buffered representation a second time.
+    headers.pop("Content-Encoding", None)
+    headers.pop("Content-Length", None)
+    headers.pop("Transfer-Encoding", None)
     return httpx.Response(
         status_code=response.status_code,
-        headers=response.headers,
+        headers=headers,
         content=bytes(content),
         request=response.request,
         extensions=response.extensions,

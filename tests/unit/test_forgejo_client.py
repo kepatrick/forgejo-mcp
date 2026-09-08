@@ -1,4 +1,7 @@
+import gzip
 import json
+import zlib
+from collections.abc import Callable
 
 import httpx
 import pytest
@@ -41,6 +44,40 @@ async def test_get_version() -> None:
     result = await client.get_version(base_url="https://git.example.test", verify_tls=True)
 
     assert result.version == "16.0.1+gitea-1.22"
+
+
+@pytest.mark.parametrize(
+    ("content_encoding", "encode"),
+    [
+        ("gzip", gzip.compress),
+        ("deflate", zlib.compress),
+    ],
+)
+async def test_get_version_decodes_compressed_response_once(
+    content_encoding: str,
+    encode: Callable[[bytes], bytes],
+) -> None:
+    payload = encode(b'{"version":"16.0.3"}')
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={
+                "Content-Encoding": content_encoding,
+                "Content-Length": str(len(payload)),
+                "Content-Type": "application/json",
+            },
+            stream=httpx.ByteStream(payload),
+        )
+
+    client = ForgejoClient(
+        connect_timeout_seconds=2,
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await client.get_version(base_url="https://git.example.test", verify_tls=True)
+
+    assert result.version == "16.0.3"
 
 
 async def test_get_version_from_private_instance_login_page() -> None:

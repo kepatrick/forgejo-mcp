@@ -1,25 +1,30 @@
 import asyncio
 import base64
 import hashlib
+import importlib.util
 import json
 import logging
 import os
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 import pytest
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 from fastapi.testclient import TestClient
 from mcp.server.auth.provider import TokenError
 from mcp.shared.auth import OAuthToken
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from forgejo_mcp.application.oauth_revocation import revoke_oauth_family
 from forgejo_mcp.application.oauth_service import OAuthService
 from forgejo_mcp.application.tool_permission_service import ToolPermissionService
+from forgejo_mcp.auth.mcp_bearer import McpBearerAuthenticator
 from forgejo_mcp.auth.passwords import hash_password
 from forgejo_mcp.auth.tokens import hash_token
 from forgejo_mcp.config import Settings
@@ -49,6 +54,9 @@ REDIRECT_URI = "https://client.example.test/oauth/callback"
 MCP_PROTOCOL_VERSION = "2025-06-18"
 READ_TOOLS = {spec.name for spec in list_tools() if spec.risk == "read"}
 WRITE_TOOLS = sorted(spec.name for spec in list_tools() if spec.risk == "write")
+BACKFILL_PATH = Path(__file__).resolve().parents[2] / (
+    "migrations/versions/20260908_0012_legacy_dashboard_revocations.py"
+)
 
 
 def oauth_settings() -> Settings:
@@ -611,6 +619,145 @@ def test_concurrent_refresh_cannot_survive_family_revocation(
             monkeypatch,
         )
     )
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "strict_grace",
+        "disabled_cache",
+        "missing_family",
+        "bearer_race",
+        "legacy_backfill",
+        "healthy_backfill",
+    ],
+)
+def test_adverse_oauth_residuals(scenario: str) -> None:
+    asyncio.run(prepare_oauth_database())
+    app = create_app(oauth_settings())
+    verifier = "oauth-residual-verifier-which-is-long-enough-0123456789"
+    with TestClient(app, base_url=ISSUER) as client:
+        client_id = register_client(client)
+        interaction = start_authorization(client, client_id, verifier)
+        code = approve_authorization(client, interaction, login=True)
+        tokens = exchange_code(client, client_id, verifier, code)
+
+    async def exercise() -> None:
+        assert DATABASE_URL is not None
+        engine = create_async_engine(DATABASE_URL)
+        factory = async_sessionmaker(engine, expire_on_commit=False)
+        settings = oauth_settings()
+        if scenario == "strict_grace":
+            settings.oauth_refresh_token_reuse_grace_seconds = 0
+        service = OAuthService(lambda: factory, settings)
+        try:
+            oauth_client = await service.get_client(client_id)
+            assert oauth_client is not None
+            stored = await service.load_refresh_token(oauth_client, str(tokens["refresh_token"]))
+            assert stored is not None
+            if scenario == "missing_family":
+                async with factory() as session:
+                    with pytest.raises(ValueError, match="family is missing"):
+                        await revoke_oauth_family(session, uuid.uuid4(), datetime.now(UTC))
+                return
+            if scenario == "bearer_race":
+                async with factory() as revoker, factory() as auth, factory() as observer:
+                    await revoker.execute(
+                        update(McpToken)
+                        .where(McpToken.id == stored.mcp_token_id)
+                        .values(enabled=False, revoked_at=datetime.now(UTC))
+                    )
+                    pid = await auth.scalar(text("SELECT pg_backend_pid()"))
+                    task = asyncio.create_task(
+                        McpBearerAuthenticator(auth).authenticate(
+                            str(tokens["access_token"]),
+                            oauth_resource_url=RESOURCE,
+                            oauth_issuer_url=ISSUER,
+                        )
+                    )
+                    try:
+                        for _ in range(500):
+                            waiting = await observer.scalar(
+                                text("SELECT wait_event_type FROM pg_stat_activity WHERE pid=:pid"),
+                                {"pid": pid},
+                            )
+                            await observer.rollback()
+                            if waiting == "Lock":
+                                break
+                            await asyncio.sleep(0.01)
+                        else:
+                            raise AssertionError("bearer did not wait for revocation")
+                        await revoker.commit()
+                        assert await asyncio.wait_for(task, 5) is None
+                    finally:
+                        await revoker.rollback()
+                        if not task.done():
+                            task.cancel()
+                        await asyncio.gather(task, return_exceptions=True)
+                return
+            replacement = await service.exchange_refresh_token(oauth_client, stored, ["mcp:tools"])
+            if scenario.endswith("backfill"):
+                if scenario == "legacy_backfill":
+                    async with factory() as session:
+                        session.add(
+                            ManagementAuditEvent(
+                                action="mcp_token.revoked",
+                                target_type="mcp_token",
+                                target_id=str(stored.mcp_token_id),
+                                details={},
+                            )
+                        )
+                        await session.commit()
+                spec = importlib.util.spec_from_file_location("backfill", BACKFILL_PATH)
+                assert spec is not None and spec.loader is not None
+                migration = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(migration)
+
+                def upgrade(connection):
+                    with Operations.context(MigrationContext.configure(connection)):
+                        migration.upgrade()
+
+                async with engine.begin() as connection:
+                    await connection.run_sync(upgrade)
+                async with factory() as session:
+                    accepted = await McpBearerAuthenticator(session).authenticate(
+                        replacement.access_token,
+                        oauth_resource_url=RESOURCE,
+                        oauth_issuer_url=ISSUER,
+                    )
+                    assert (accepted is not None) == (scenario == "healthy_backfill")
+                loaded = await service.load_refresh_token(
+                    oauth_client, str(replacement.refresh_token)
+                )
+                assert (loaded is not None) == (scenario == "healthy_backfill")
+                if loaded is not None:
+                    await service.exchange_refresh_token(oauth_client, loaded, ["mcp:tools"])
+                return
+            if scenario == "disabled_cache":
+                async with factory() as session:
+                    await session.execute(
+                        update(User)
+                        .where(User.id == stored.user_id)
+                        .values(status=RecordStatus.DISABLED)
+                    )
+                    await session.commit()
+            with pytest.raises(TokenError):
+                await service.exchange_refresh_token(oauth_client, stored, ["mcp:tools"])
+            if scenario == "strict_grace":
+                assert await service.load_access_token(replacement.access_token) is None
+            async with factory() as session:
+                assert (
+                    await McpBearerAuthenticator(session).authenticate(
+                        replacement.access_token,
+                        oauth_resource_url=RESOURCE,
+                        oauth_issuer_url=ISSUER,
+                    )
+                    is None
+                )
+        finally:
+            await engine.dispose()
+
+    asyncio.run(exercise())
 
 
 def test_complete_oauth21_flow_enforces_permissions_and_rotation(

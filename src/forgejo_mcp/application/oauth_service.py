@@ -494,6 +494,7 @@ class OAuthService(
                 reuse_age_seconds = (now - record.rotated_at).total_seconds()
                 grace_seconds = self.settings.oauth_refresh_token_reuse_grace_seconds
                 if grace_seconds > 0 and reuse_age_seconds <= grace_seconds:
+                    await self._require_authorizable_user(session, record.user_id)
                     cached = (
                         recovery.token
                         if recovery.expires_at is not None and recovery.expires_at >= now

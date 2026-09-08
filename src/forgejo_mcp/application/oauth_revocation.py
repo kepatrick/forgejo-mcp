@@ -49,7 +49,7 @@ async def revoke_oauth_family(
 ) -> tuple[uuid.UUID, ...]:
     family = await lock_oauth_family(session, family_id)
     if family is None:
-        return ()
+        raise ValueError("OAuth token family is missing")
     effective_revoked_at = family.revoked_at or revoked_at
     family.revoked_at = effective_revoked_at
     token_ids = tuple(

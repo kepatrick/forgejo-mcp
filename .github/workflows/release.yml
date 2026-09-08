@@ -1,0 +1,147 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Prepared MCP version on main, e.g. 0.1.1 (not a Forgejo version)'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Require a main-branch commit and matching release metadata
+        id: release
+        env:
+          REQUESTED_VERSION: ${{ inputs.version }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_REF: ${{ github.ref }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            if [ "$EVENT_REF" != refs/heads/main ]; then
+              echo 'Manual releases must run from main.' >&2
+              exit 1
+            fi
+            RELEASE_TAG="v${REQUESTED_VERSION#v}"
+          else
+            RELEASE_TAG="$TAG_NAME"
+          fi
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
+          python scripts/release.py "$RELEASE_TAG" --check
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: [validate, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Prepare release notes and image name
+        id: metadata
+        shell: bash
+        run: |
+          python scripts/release.py "$RELEASE_TAG" --check --notes-file "$RUNNER_TEMP/release-notes.md"
+          echo "image=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+          echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Create or verify the manual release tag at the tested commit
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          REMOTE_TAG=$(git ls-remote origin "refs/tags/$RELEASE_TAG")
+          if [ -n "$REMOTE_TAG" ]; then
+            git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            if [ "$(git rev-parse "$RELEASE_TAG^{commit}")" != "$GITHUB_SHA" ]; then
+              echo 'Tag already points to a different commit; refusing to move it.' >&2
+              exit 1
+            fi
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag -a "$RELEASE_TAG" "$GITHUB_SHA" -m "Release $RELEASE_TAG"
+            git push origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          fi
+      # GITHUB_TOKEN tag pushes do not start another workflow. This run performs
+      # testing and publication itself, using the same pinned commit throughout.
+      # Reserve the release before pushing an image. A draft intentionally remains
+      # on failure: reruns fail closed rather than silently replacing an image tag.
+      - name: Reserve a new release (never overwrite an existing release)
+        shell: bash
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[].tag_name' > "$RUNNER_TEMP/release-tags"
+          if grep -Fxq "$RELEASE_TAG" "$RUNNER_TEMP/release-tags"; then
+            echo "Release or draft already exists. Follow docs/releasing.md recovery instructions." >&2
+            exit 1
+          fi
+          gh release create "$RELEASE_TAG" --verify-tag --draft --latest=false \
+            --title "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/release-notes.md"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Build and publish versioned image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.metadata.outputs.image }}:${{ steps.metadata.outputs.version }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ steps.metadata.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=min
+          sbom: true
+      - name: Publish GitHub release with the image digest
+        env:
+          IMAGE: ${{ steps.metadata.outputs.image }}
+          VERSION: ${{ steps.metadata.outputs.version }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          printf '\n## Container image\n\n- Image: `%s:%s`\n- Digest-pinned: `%s@%s`\n- Platform: `linux/amd64`\n' \
+            "$IMAGE" "$VERSION" "$IMAGE" "$DIGEST" >> "$RUNNER_TEMP/release-notes.md"
+          gh release edit "$RELEASE_TAG" --draft=false --latest=false \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+          cat "$RUNNER_TEMP/release-notes.md" >> "$GITHUB_STEP_SUMMARY"

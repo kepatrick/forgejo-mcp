@@ -1,10 +1,29 @@
 # Changelog
 
+[繁體中文](CHANGELOG.zh-TW.md)
+
 All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-09-08
+
+### Compatibility
+
+- Initial MCP Server release targeting the checksum-locked Forgejo 16.0.2 API contract. The release workflow runs the existing Forgejo 16.0.2 Docker E2E before publishing.
+- Forgejo 16.0.3 compatibility and OAuth changes proposed in PR #3 are not included in this release.
+- Container platform: `linux/amd64`. Python package, frontend, and MCP release version: `0.1.0`.
+
+### Deployment and upgrade notes
+
+- Versioned container image: `ghcr.io/kepatrick/forgejo-mcp:0.1.0`, available only after the release workflow completes and package access is configured. No `latest` image tag is published.
+- Use the deployment files from tag `v0.1.0`. `deploy/compose.image.yaml` selects the published image while retaining the existing database, secrets, and startup migration configuration.
+- Configure `POSTGRES_PASSWORD`, bootstrap admin and credential encryption secret files, and cookie/TLS settings before starting. This release does not introduce PR #3's OAuth or required Forgejo URL allowlist settings.
+- Compose runs `alembic upgrade head` before starting the app; this release's schema head is `20250802_0008`. Back up existing PostgreSQL data and credential encryption secrets before upgrading an existing source deployment.
+- Rolling back the image alone does not roll back the database. Verify schema compatibility or restore a coordinated backup. Never use `docker compose down -v` as a routine upgrade or rollback step.
+- Review the known limitations before production use, including the single-process deployment constraint.
 
 ### Added
 
@@ -31,10 +50,14 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Forgejo API-backed repository contents, branch creation, and atomic multi-file commit tools.
 - Pull-request changed-file, reviewer request/removal, review submission/listing, and merge tools.
 - Combined commit status, workflow dispatch, tag creation, and release creation tools.
-- Git tree, repository label/milestone, pull-request commit/review, and merged-status read tools, bringing the v1 catalog to 38 tools.
+- Git tree, repository label/milestone, pull-request commit/review, and merged-status read tools, forming part of the 50-tool v1 catalog.
 - Opt-in actual-Forgejo development-flow E2E coverage from repository setup and Issue work through review, merge, workflow dispatch, tag, and release.
 - Full Docker Compose E2E automation covering Dashboard provisioning, PostgreSQL persistence, actual Forgejo PATs, MCP authorization, and the complete workflow through `POST /mcp`.
-- Forgejo 16.0.2 image pin plus a checksum-locked OpenAPI operation contract covering all 38 registered tools.
+- Forgejo 16.0.2 image pin plus a checksum-locked OpenAPI operation contract for the registered tools.
+- Actions run, job, log and artifact tools, plus repository migration and pull-mirror management, bringing the registry to 50 tools.
+- Guarded release script with patch/minor/major or explicit-version preparation, read-only previews, and synchronized bilingual changelogs and package versions.
+- Reusable CI, manual GitHub Actions release triggers, versioned GHCR image publishing, and GitHub Releases with bilingual notes and image digests.
+- English and Traditional Chinese release documentation and a published-image Compose override.
 - A privilege-dropping container entrypoint that safely stages read-only `0600` secret files for the unprivileged application process.
 - Bounded MCP request and multi-file commit sizes, split Forgejo timeouts, safe-read retries, and per-token/per-user MCP rate limits.
 - Graceful invocation draining with durable audit completion, PostgreSQL pool disposal, and local Docker restart coverage.

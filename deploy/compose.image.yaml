@@ -1,0 +1,5 @@
+# Use with compose.yaml and `up --no-build`; see docs/releasing.md.
+# 搭配 compose.yaml 與 `up --no-build`；詳見 docs/releasing.zh-TW.md。
+services:
+  app:
+    image: ${FMCP_IMAGE:-ghcr.io/kepatrick/forgejo-mcp:0.1.0}

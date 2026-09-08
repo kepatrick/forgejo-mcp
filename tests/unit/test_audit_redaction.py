@@ -57,9 +57,14 @@ def test_adverse_audit_credentials_are_redacted() -> None:
         ('"bot:ghp_leak@host"', "ghp_leak"),
         ("see bot:ghp_leak@host.", "ghp_leak"),
         ("bot:pa/ss@host/r", "pa/ss"),
+        ("bot:ghp(leak)@host/r", "ghp(leak)"),
+        *[(f"bot:ghp_leak@host{end}", "ghp_leak") for end in ",;[]<>?#"],
     ):
         assert secret not in repr(redact_arguments({"path": value}).value)
         assert secret not in repr(extract_target({"path": value}))
+    for value in ("ratio 1:2@scale", "release:v2@stable/notes"):
+        assert redact_arguments({"path": value}).value["path"] == value
+        assert extract_target({"path": value})["path"] == value
 
 
 def test_credentials_embedded_in_remote_url_are_redacted_before_persistence() -> None:

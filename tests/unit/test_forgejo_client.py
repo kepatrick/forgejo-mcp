@@ -12,6 +12,22 @@ from forgejo_mcp.forgejo import client as client_module
 from forgejo_mcp.forgejo.client import ForgejoClient, normalize_base_url
 
 
+@pytest.mark.parametrize("status,method", [(204, "DELETE"), (304, "GET"), (200, "HEAD")])
+async def test_bodyless_response_ignores_compression_metadata(status, method) -> None:
+    response = httpx.Response(
+        status,
+        headers={"Content-Encoding": "gzip"},
+        stream=httpx.ByteStream(b""),
+        request=httpx.Request(method, "https://example.test"),
+    )
+    result = await client_module._bounded_response(response)
+    assert result.status_code == status
+    assert result.content == b""
+    assert "Content-Encoding" not in result.headers
+    assert not response.is_stream_consumed
+    await response.aclose()
+
+
 @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
 async def test_decompression_memory_is_bounded(monkeypatch, encoding) -> None:
     limit = 1024 * 1024

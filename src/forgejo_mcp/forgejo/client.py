@@ -2147,6 +2147,20 @@ def _is_private_migration_host(hostname: str) -> bool:
 
 
 async def _bounded_response(response: httpx.Response) -> httpx.Response:
+    # These responses have no representation body (RFC 9110), even when a
+    # proxy supplies representation metadata such as Content-Encoding.
+    if response.status_code in {204, 304} or response.request.method == "HEAD":
+        headers = httpx.Headers(response.headers)
+        headers.pop("Content-Encoding", None)
+        headers.pop("Content-Length", None)
+        headers.pop("Transfer-Encoding", None)
+        return httpx.Response(
+            response.status_code,
+            headers=headers,
+            content=b"",
+            request=response.request,
+            extensions=response.extensions,
+        )
     content_length = response.headers.get("Content-Length")
     if content_length is not None:
         try:

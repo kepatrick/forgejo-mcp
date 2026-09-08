@@ -19,8 +19,9 @@ _URL_CREDENTIALS = re.compile(
     r"(?P<scheme>[a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s]+@",
 )
 _AUTHORITY_CANDIDATE = re.compile(
-    r"(?<![^\s(/\"'])(?P<authority>[^/:\s\"'()]+:(?!//)[^\s\"'()]+@[^/\s\"'()]+)"
-    r"(?P<terminator>/|$|\s|[\"')])",
+    r"(?<![^\s(/\"'\[<])(?P<authority>[^/:\s\"'()]+:(?!//)[^\s\"']+@"
+    r"(?:\[[0-9A-Fa-f:.]+\]|[^/\s\"'(),;\[\]<>?#]+))"
+    r"(?P<terminator>/|$|\s|[\"'),;\[\]<>?#])",
 )
 _AUTHORITY_HOST = re.compile(
     r"(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)"
@@ -143,6 +144,12 @@ def _redact_schemeless_authority(match: re.Match[str]) -> str:
     authority = match.group("authority")
     userinfo, separator, host = authority.rpartition("@")
     username, colon, password = userinfo.partition(":")
+    # Explicit prose contexts are not generic numeric-credential exemptions.
+    prefix = match.string[: match.start()].rstrip().casefold()
+    if (prefix.endswith("ratio") and username.isdecimal() and password.isdecimal()) or (
+        username == "release" and re.fullmatch(r"v[0-9]+(?:\.[0-9]+)*", password)
+    ):
+        return match.group(0)
     if (
         not separator
         or not colon

@@ -2,7 +2,7 @@
 
 ## Executive summary
 
-Forgejo MCP is compatible with both Forgejo 16.0.2 and 16.0.3. The official Swagger documents contain no endpoint-level difference: every path, method, operation ID, parameter, request body and response used by the 50-tool MCP catalog is unchanged.
+Forgejo 16.0.3 is the minimum supported version. Forgejo 16.0.2 remains a comparative non-regression baseline, not a supported deployment target. The official Swagger documents contain no endpoint-level difference: every path, method, operation ID, parameter, request body and response used by the 50-tool MCP catalog is unchanged.
 
 The only functional schema change is that Forgejo 16.0.3 marks `index`, `owner` and `repo` as required in `IssueMeta`. Forgejo MCP does not consume or emit `IssueMeta`, so no endpoint adapter or generated client change is required.
 

@@ -1,5 +1,7 @@
 # Forgejo MCP
 
+Minimum supported Forgejo version: **16.0.3**. CI retains 16.0.2 solely as a comparative baseline.
+
 [繁體中文](README.zh-TW.md)
 
 Maintainers: [versioned Docker image and GitHub Release workflow](docs/releasing.md).

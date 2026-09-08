@@ -5,7 +5,24 @@ from typing import cast
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from forgejo_mcp.db.models import McpToken, OAuthAccessToken, OAuthRefreshToken
+from forgejo_mcp.db.models import (
+    McpToken,
+    OAuthAccessToken,
+    OAuthRefreshToken,
+    OAuthTokenFamily,
+)
+
+
+async def lock_oauth_family(
+    session: AsyncSession,
+    family_id: uuid.UUID,
+) -> OAuthTokenFamily | None:
+    return cast(
+        OAuthTokenFamily | None,
+        await session.scalar(
+            select(OAuthTokenFamily).where(OAuthTokenFamily.id == family_id).with_for_update()
+        ),
+    )
 
 
 async def oauth_family_for_mcp_token(
@@ -30,6 +47,11 @@ async def revoke_oauth_family(
     family_id: uuid.UUID,
     revoked_at: datetime,
 ) -> tuple[uuid.UUID, ...]:
+    family = await lock_oauth_family(session, family_id)
+    if family is None:
+        return ()
+    effective_revoked_at = family.revoked_at or revoked_at
+    family.revoked_at = effective_revoked_at
     token_ids = tuple(
         token_id
         for token_id in (
@@ -45,17 +67,17 @@ async def revoke_oauth_family(
     await session.execute(
         update(OAuthRefreshToken)
         .where(OAuthRefreshToken.family_id == family_id)
-        .values(revoked_at=revoked_at)
+        .values(revoked_at=effective_revoked_at)
     )
     if token_ids:
         await session.execute(
             update(McpToken)
             .where(McpToken.id.in_(token_ids))
-            .values(enabled=False, revoked_at=revoked_at)
+            .values(enabled=False, revoked_at=effective_revoked_at)
         )
         await session.execute(
             update(OAuthAccessToken)
             .where(OAuthAccessToken.mcp_token_id.in_(token_ids))
-            .values(revoked_at=revoked_at)
+            .values(revoked_at=effective_revoked_at)
         )
     return token_ids

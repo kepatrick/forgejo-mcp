@@ -283,13 +283,23 @@ class OAuthAuthorizationCode(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
+class OAuthTokenFamily(Base):
+    __tablename__ = "oauth_token_families"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class OAuthRefreshToken(Base):
     __tablename__ = "oauth_refresh_tokens"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     token_prefix: Mapped[str] = mapped_column(String(20))
-    family_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True)
+    family_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("oauth_token_families.id", ondelete="CASCADE"), index=True
+    )
     client_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("oauth_clients.id", ondelete="CASCADE"), index=True
     )

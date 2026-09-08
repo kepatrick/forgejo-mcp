@@ -15,8 +15,9 @@ from fastapi.testclient import TestClient
 from mcp.server.auth.provider import TokenError
 from mcp.shared.auth import OAuthToken
 from sqlalchemy import select, text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from forgejo_mcp.application.oauth_revocation import revoke_oauth_family
 from forgejo_mcp.application.oauth_service import OAuthService
 from forgejo_mcp.application.tool_permission_service import ToolPermissionService
 from forgejo_mcp.auth.passwords import hash_password
@@ -72,7 +73,7 @@ async def prepare_oauth_database() -> None:
     async with engine.begin() as connection:
         await connection.execute(
             text(
-                "TRUNCATE oauth_access_tokens, oauth_refresh_tokens, "
+                "TRUNCATE oauth_access_tokens, oauth_refresh_tokens, oauth_token_families, "
                 "oauth_authorization_codes, oauth_authorization_requests, oauth_clients, "
                 "mcp_token_tool_grants, user_tool_allowances, tool_settings, mcp_tokens, "
                 "forgejo_credentials, forgejo_instances, management_audit_events, "
@@ -518,6 +519,98 @@ async def age_rotated_refresh_token(refresh_token: str, age_seconds: int) -> Non
         record.rotated_at = datetime.now(UTC) - timedelta(seconds=age_seconds)
         await session.commit()
     await engine.dispose()
+
+
+async def refresh_while_revoking_family(
+    client_id: str,
+    refresh_token: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert DATABASE_URL is not None
+    refresh_engine = create_async_engine(DATABASE_URL)
+    revoke_engine = create_async_engine(DATABASE_URL)
+    observer_engine = create_async_engine(DATABASE_URL)
+    refresh_factory = async_sessionmaker(refresh_engine, expire_on_commit=False)
+    revoke_factory = async_sessionmaker(revoke_engine, expire_on_commit=False)
+    observer_factory = async_sessionmaker(observer_engine, expire_on_commit=False)
+    service = OAuthService(lambda: refresh_factory, oauth_settings())
+    client = await service.get_client(client_id)
+    assert client is not None
+    stored = await service.load_refresh_token(client, refresh_token)
+    assert stored is not None
+
+    issuing = asyncio.Event()
+    continue_issuing = asyncio.Event()
+    original_issue = service._issue_token_pair
+
+    async def paused_issue(*args: Any, **kwargs: Any) -> OAuthToken:
+        issuing.set()
+        await continue_issuing.wait()
+        return await original_issue(*args, **kwargs)
+
+    monkeypatch.setattr(service, "_issue_token_pair", paused_issue)
+    refresh_task = asyncio.create_task(
+        service.exchange_refresh_token(client, stored, ["mcp:tools"])
+    )
+    revoke_task: asyncio.Task[None] | None = None
+    try:
+        await asyncio.wait_for(issuing.wait(), timeout=5)
+        async with revoke_factory() as revoke_session:
+            revoke_pid = await revoke_session.scalar(text("SELECT pg_backend_pid()"))
+            assert isinstance(revoke_pid, int)
+
+            async def revoke_and_commit(session: AsyncSession) -> None:
+                await revoke_oauth_family(session, stored.family_id, datetime.now(UTC))
+                await session.commit()
+
+            revoke_task = asyncio.create_task(revoke_and_commit(revoke_session))
+            for _ in range(500):
+                async with observer_factory() as observer:
+                    wait_event_type = await observer.scalar(
+                        text("SELECT wait_event_type FROM pg_stat_activity WHERE pid = :pid"),
+                        {"pid": revoke_pid},
+                    )
+                if wait_event_type == "Lock":
+                    break
+                await asyncio.sleep(0.01)
+            else:
+                raise AssertionError("family revocation did not contend with refresh rotation")
+
+            continue_issuing.set()
+            replacement = await asyncio.wait_for(refresh_task, timeout=5)
+            await asyncio.wait_for(revoke_task, timeout=5)
+
+        assert await service.load_access_token(replacement.access_token) is None
+        assert replacement.refresh_token is not None
+        assert await service.load_refresh_token(client, replacement.refresh_token) is None
+    finally:
+        continue_issuing.set()
+        pending = [task for task in (refresh_task, revoke_task) if task is not None]
+        await asyncio.gather(*pending, return_exceptions=True)
+        await refresh_engine.dispose()
+        await revoke_engine.dispose()
+        await observer_engine.dispose()
+
+
+def test_concurrent_refresh_cannot_survive_family_revocation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asyncio.run(prepare_oauth_database())
+    app = create_app(oauth_settings())
+    verifier = "oauth-race-verifier-which-is-long-enough-0123456789"
+    with TestClient(app, base_url=ISSUER) as client:
+        client_id = register_client(client)
+        interaction = start_authorization(client, client_id, verifier)
+        code = approve_authorization(client, interaction, login=True)
+        tokens = exchange_code(client, client_id, verifier, code)
+
+    asyncio.run(
+        refresh_while_revoking_family(
+            client_id,
+            str(tokens["refresh_token"]),
+            monkeypatch,
+        )
+    )
 
 
 def test_complete_oauth21_flow_enforces_permissions_and_rotation(

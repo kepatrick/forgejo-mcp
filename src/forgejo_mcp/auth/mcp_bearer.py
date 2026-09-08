@@ -9,7 +9,13 @@ from mcp.server.auth.provider import AccessToken
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from forgejo_mcp.auth.tokens import hash_token, mcp_token_prefix
-from forgejo_mcp.db.models import McpToken, OAuthAccessToken, OAuthRefreshToken, RecordStatus
+from forgejo_mcp.db.models import (
+    McpToken,
+    OAuthAccessToken,
+    OAuthRefreshToken,
+    OAuthTokenFamily,
+    RecordStatus,
+)
 from forgejo_mcp.db.repositories import McpTokenRepository
 
 _MCP_TOKEN_PATTERN = re.compile(r"fmcp_[A-Za-z0-9_-]{43}\Z")
@@ -74,6 +80,9 @@ class McpBearerAuthenticator:
                 return None
             refresh = await self.session.get(OAuthRefreshToken, oauth_link.refresh_token_id)
             if refresh is None or refresh.revoked_at is not None:
+                return None
+            family = await self.session.get(OAuthTokenFamily, refresh.family_id)
+            if family is None or family.revoked_at is not None:
                 return None
             scopes = tuple(refresh.scopes)
             resource = oauth_link.resource

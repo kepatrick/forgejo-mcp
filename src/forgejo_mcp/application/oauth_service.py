@@ -31,7 +31,7 @@ from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from forgejo_mcp.application.oauth_revocation import revoke_oauth_family
+from forgejo_mcp.application.oauth_revocation import lock_oauth_family, revoke_oauth_family
 from forgejo_mcp.auth.tokens import (
     hash_token,
     mcp_token_prefix,
@@ -54,6 +54,7 @@ from forgejo_mcp.db.models import (
     OAuthAuthorizationRequest,
     OAuthClient,
     OAuthRefreshToken,
+    OAuthTokenFamily,
     RecordStatus,
     ToolSetting,
     User,
@@ -396,13 +397,15 @@ class OAuthService(
             refresh_expires_at = record.refresh_expires_at or now + timedelta(
                 days=self.settings.oauth_refresh_token_ttl_days
             )
+            family_id = uuid.uuid4()
+            session.add(OAuthTokenFamily(id=family_id))
             token = await self._issue_token_pair(
                 session,
                 client_record=client_record,
                 user_id=record.user_id,
                 scopes=record.scopes,
                 resource=record.resource,
-                family_id=uuid.uuid4(),
+                family_id=family_id,
                 refresh_expires_at=refresh_expires_at,
             )
             await session.commit()
@@ -422,6 +425,9 @@ class OAuthService(
                 )
             )
             if record is None:
+                return None
+            family = await session.get(OAuthTokenFamily, record.family_id)
+            if family is None or family.revoked_at is not None:
                 return None
             client_record = await session.get(OAuthClient, record.client_id)
             if client_record is None or client_record.client_id != client.client_id:
@@ -462,13 +468,20 @@ class OAuthService(
         recovery: _RefreshRecoveryEntry,
     ) -> OAuthToken:
         async with self.session_factory_provider()() as session:
+            family = await lock_oauth_family(session, refresh_token.family_id)
+            if family is None or family.revoked_at is not None:
+                raise TokenError("invalid_grant", "refresh token is invalid")
             record = await session.scalar(
                 select(OAuthRefreshToken)
                 .where(OAuthRefreshToken.id == refresh_token.record_id)
                 .with_for_update()
             )
             now = datetime.now(UTC)
-            if record is None or record.expires_at <= now:
+            if (
+                record is None
+                or record.family_id != refresh_token.family_id
+                or record.expires_at <= now
+            ):
                 raise TokenError("invalid_grant", "refresh token is invalid")
             if record.revoked_at is not None:
                 raise TokenError("invalid_grant", "refresh token is invalid")
@@ -581,7 +594,18 @@ class OAuthService(
                 return None
             refresh = await session.get(OAuthRefreshToken, link.refresh_token_id)
             client = await session.get(OAuthClient, link.client_id)
-            if refresh is None or client is None:
+            family = (
+                await session.get(OAuthTokenFamily, refresh.family_id)
+                if refresh is not None
+                else None
+            )
+            if (
+                refresh is None
+                or refresh.revoked_at is not None
+                or client is None
+                or family is None
+                or family.revoked_at is not None
+            ):
                 return None
             return StoredAccessToken(
                 token="",

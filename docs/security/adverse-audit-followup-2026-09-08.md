@@ -69,3 +69,28 @@ Never intentionally place credentials in free-text tool arguments or log fields.
 
 Publishing and deployment must be verified separately; local test success is not
 evidence that a remote PR or running service contains these changes.
+
+## Subsequent fifth-audit corrections
+
+The preceding status is historical. The fifth external counter-audit identified
+remaining defects; its text is preserved in the external audit document.
+
+- Conditional bearer `last_used_at` UPDATE rechecks token revocation after waiting
+  on a PostgreSQL row lock; a deterministic test observes the lock before commit.
+- Revocation of a missing family raises explicitly instead of reporting success.
+- Warm refresh recovery revalidates user/Forgejo-credential readiness.
+- Dedicated `grace=0` coverage verifies replay revokes the replacement family.
+- Backfill tests additionally use the real Alembic schema and bearer/refresh
+  services for legacy Dashboard revocation and healthy rotation.
+- HTTP 204/304/HEAD responses do not decode nonexistent bodies.
+- Parenthesized passwords and additional authority terminators are redacted;
+  explicit ratio and release-version prose has regression coverage.
+
+The integrated Docker E2E passed Forgejo 16.0.3 with OAuth and all 50 tools.
+Scope-specific replacement branches are based on current upstream rather than
+shipping unrelated release-automation deletions from the old integrated branch.
+Their individual tests and publishing/deployment state are recorded separately.
+
+At the start of this follow-up, PR #3 still pointed at `cf40e9b` and carried the
+known high-severity refresh/revocation bug. It was explicitly returned to draft
+while replacement PRs were prepared; the old readiness comment is superseded.

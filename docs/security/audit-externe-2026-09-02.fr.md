@@ -251,6 +251,100 @@ Les deux suites Docker E2E ont ensuite été rejouées avec les correctifs : For
 
 ---
 
+## 🔁🔁🔁🔁 Quatrième contre-audit — plage `3851931..b40124c` (2026-09-08)
+
+> Note Claude — contre-vérification adverse et postérieure des 4 commits `cf40e9b` (clôture du 3ᵉ contre-audit), `4d85fcd` (décodage compressé), `6dd04a5` (sérialisation de la révocation de famille), `b40124c` (docs). Témoins exécutés contre le **vrai service sur PostgreSQL réel migré par Alembic** (pas SQLite : `FOR UPDATE` et la migration `0011` sont exercés pour de vrai), mesures mémoire `tracemalloc` sur httpx réel, diff intégral relu, pytest/ruff/mypy/alembic ré-exécutés. Aucun fichier du code modifié.
+
+### 🛑 État de publication
+
+`git ls-remote origin` fait foi : la branche distante et la **PR upstream #3 (kepatrick/forgejo-mcp, OPEN)** sont à **`cf40e9b`**. Les 3 commits `4d85fcd`, `6dd04a5`, `b40124c` sont **non poussés** (même seconde d'auteur : lot créé d'un bloc). Conséquence : la PR publique porte encore la régression **HAUTE** reconnue par le mainteneur (remplacement de refresh survivant à la révocation de famille), dont le correctif n'existe que localement. La demande du mainteneur de scinder en 3 PR est acquiescée par écrit mais non exécutée ; le lot local alourdit encore la PR unique d'une migration.
+
+### Intégrité de la plage : ✅ confirmée
+
+Rien hors périmètre, aucune dépendance/CI/Docker touchée, aucun code réseau/exécution ajouté, aucun secret (instrument validé sur témoin positif 3/3), auteur unique. 4 assertions modifiées = inversions de conception annoncées (récupération idempotente), aucun test supprimé, les témoins d'origine du 3ᵉ tour sont cette fois **rejoués textuellement** dans la suite. Ré-exécuté : **142 unit passed**, 152 collectés, ruff/mypy verts, `alembic heads` = `0011` tête unique.
+
+### Verdict par constat du 3ᵉ contre-audit (témoins d'origine rejoués)
+
+| Constat | Verdict adverse |
+|---|---|
+| 1 — MOY. fork indétecté dans la grâce | ✅ **CORRIGÉ — à partir de `6dd04a5`, pas de `cf40e9b`**. Récupération **idempotente** prouvée : 4 replays de R0 dans la grâce → 1 seule paire, 0 branche ; les deux porteurs forcés sur la même chaîne, second usage à la rotation suivante → **famille révoquée, bearer refusé** (RFC 9700 §4.14.2 restaurée) ; hors grâce et `grace=0` → strict ; cache froid (autre processus) → rejet sans révocation ; 2 refresh simultanés → réponses identiques. Event enrichi `family_id`/`user_id`/`refresh_token_id`/`cache_hit`. Réserve mineure : le chemin cache chaud ne repasse pas par `_require_authorizable_user` — une paire est servie à un utilisateur désactivé entre-temps (sans accès effectif : bearer refusé ; bruit d'audit). |
+| 2 — MOY. révocation dashboard sans famille | ⚠️ **CORRIGÉ pour l'avenir, PARTIEL pour l'existant.** Post-migration : révocation dashboard → famille révoquée, bearer refusé, refresh `LOAD_NONE`, replay en grâce `LOAD_NONE` ✅ ; admin/suspension/`/revoke` coupent ✅. **Mais la migration `0011` ne relit que `oauth_refresh_tokens.revoked_at`** : une révocation dashboard faite **avant la mise à jour** (qui ne touchait que `mcp_tokens`) est ignorée — prouvé sur données héritées semées à `0010` : famille « F_dash_legacy » → `revoked_at=None`, **refresh OK, nouvelle paire émise, bearer accepté**. Exactement le scénario du constat, pour tout ce que les utilisateurs croyaient déjà révoqué. Correctif : propager `mcp_tokens.revoked_at` (join `mcp_token_id`, `kind='oauth'`) dans le `MIN` de la migration. Note : la révocation du credential Forgejo ne coupe **aucune** famille (le bearer accepte l'access jusqu'à expiration ≤ 1 h, seule l'exécution d'outil échoue) — le 3ᵉ tour la rangeait à tort parmi les leviers coupants. |
+| 3 — BASSE motif de redaction | ⚠️ **PARTIEL, avec régression.** `dir/bot:ghp_leak@host/file` et `user:secret@host` désormais redigés ✅, `12:30@office/room` intact ✅. Mais `git clone bot:ghp_secret@example.test:o/r.git` **fuit toujours** (port non numérique échoue `_AUTHORITY_HOST`), `release:v2@stable/notes` reste un faux positif, et **nouvelle régression** : `1234:5678@host/r` (user et mot de passe numériques — PIN, ids) **fuit** à cause de la clause `isdecimal()` ajoutée pour sauver `12:30@office`. Un faux positif échangé contre une fuite. Couche audit persistée uniquement : sévérité BASSE inchangée. |
+| 4 — BASSE tenue documentaire | ⚠️ **PARTIEL.** `cf40e9b` restaure honnêtement les chiffres historiques (144/143 → 135/134, vérifiés sur `git show e53b3fa`) et relabelle les sections datées en « historique » (clarifiant, non falsifiant, mais pas « ajouter seulement »). Le schéma de **co-livraison disposition/correctif dans le même commit** est **répété** dans `cf40e9b` malgré la réserve du tour précédent. `b40124c` : ajout pur. |
+
+### Commits fonctionnels
+
+| Commit | Verdict |
+|---|---|
+| `4d85fcd` décodage compressé | ✅ **SÛR** — corrige une **panne totale** (100 % des appels Forgejo en `DecodingError` derrière tout reverse proxy qui compresse, car `aiter_bytes()` décode déjà et la reconstruction redéclenchait le décodeur), fail-closed. Témoin gzip 50 KiB : REJECT avant, ACCEPT décodé une fois après. |
+| `6dd04a5` sérialisation de famille | ✅ **SÛR** — `SELECT … FOR UPDATE` sur `oauth_token_families`, ordre d'acquisition **identique** sur les 3 chemins (refresh, `/revoke`, dashboard) → pas de deadlock (mesuré : attente sérialisée 0,5 s, issue correcte) ; TOCTOU refresh/révocation **fermé** (READ COMMITTED + verrou tenu jusqu'au commit). **`mcp_bearer.py`** : diff = 3 lignes, tous les maillons antérieurs intacts, `family is None` ⇒ **refus fail-closed** (orphelin FK retirée → REFUSE, famille révoquée → REFUSE, static avec lien → REFUSE). Le bearer ne prend jamais le verrou famille (auth en 9 ms pendant un `FOR UPDATE` tenu). |
+| Migration `0011` | ✅ **SÛR** — backfill avant FK, aucun `NOT NULL` sans défaut, DDL transactionnel, upgrade/downgrade/re-upgrade idempotents mesurés, familles « course pré-0011 » fermées à la migration, downgrade propre (c'est `0009` qui purge `kind='oauth'`, inchangé). Seule lacune : le cas F_dash_legacy ci-dessus. |
+
+### 🆕 Constats nouveaux (dont un réfute le 1ᵉʳ audit)
+
+1. 🟠 **MOYENNE — bombe de décompression : le plafond 10 MiB ne protège pas les corps compressés.** L'audit initial (§5, « réponses bornées 10 Mo streamées avant bufferisation ») était **faux pour cette classe** : le plafond porte sur les octets décompressés mais n'est vérifié qu'**après** que httpx a gonflé un chunk brut entier (`READ_NUM_BYTES` 64 KiB, `decompressobj().decompress()` sans `max_length`), et les encodages chaînés sont acceptés sans limite. Mesuré (`tracemalloc`, chunks 64 KiB) : `gzip` 100 MiB → 142 MiB alloués ; `gzip,gzip` (335 B sur le fil) → 210 MiB ; **`gzip,gzip,gzip` 512 MiB (245 B sur le fil) → 1,07 GiB alloués, RSS 2,1 GiB** avant le refus. Préexistant, identique avant/après `4d85fcd`. Atteignable depuis un Forgejo compromis ou un MITM si `verify_tls=false`. `br`/`zstd` : décodeurs absents du venv → identité → fail-closed ; s'aggraverait si `httpx[brotli]` était installé. Correctif : `Accept-Encoding: identity` + refus de tout `Content-Encoding`, ou `aiter_raw()` borné sur le fil + décodage manuel avec `max_length`/`unconsumed_tail`, et refus des `Content-Encoding` multi-valués. |
+2. 🟡 BASSE (préexistant) — **une requête acceptée pendant une transaction de révocation ouverte** : le bearer a fini ses contrôles puis bloque sur `UPDATE mcp_tokens SET last_used_at` (verrou de ligne tenu par la révocation) ; au commit de celle-ci, la requête déjà validée est **acceptée** (re-auth → refusée). Fenêtre = durée de la transaction de révocation, non bornée (aucun `lock_timeout`/`statement_timeout`). Correctif : `UPDATE … WHERE enabled AND revoked_at IS NULL` + `rowcount != 1` ⇒ refus.
+3. 🟡 BASSE — `revoke_oauth_family` sur famille absente retourne `()` **sans rien révoquer** tandis que `revoke_token` journalise `oauth.token_family_revoked` (audit trompeur). Inatteignable après migration (NOT NULL + FK) ; à durcir en échec explicite.
+4. 🟡 BASSE — `grace=0` strict : garde codée (`grace_seconds > 0 and …`), **aucun test dédié** dans la suite, ni avant ni après (la preuve des tours 3 et 4 est un témoin de l'auditeur).
+
+### État après quatrième contre-audit
+
+| | |
+|---|---|
+| CRITIQUE | 0 |
+| HAUTE | 0 dans l'arbre local — **1 sur la PR publique** (`cf40e9b`, régression rotation/révocation reconnue par le mainteneur, correctif non poussé) |
+| MOYENNE | 2 : bombe de décompression (préexistante, réfute le 1ᵉʳ audit) ; migration `0011` ignorant les révocations dashboard antérieures |
+| BASSE | ~6 : redaction (scp-like, `1234:5678@`, faux positif), requête acceptée pendant révocation ouverte, no-op silencieux, `grace=0` sans test, paire servie à utilisateur désactivé, co-livraison disposition/correctif |
+
+**Actions prioritaires** : (1) **pousser** `4d85fcd`+`6dd04a5` ou retirer la PR de la revue tant que la HAUTE y figure ; (2) borner la décompression sur le fil ; (3) compléter le backfill de `0011` avec `mcp_tokens.revoked_at` ; (4) scinder en 3 PR comme demandé par le mainteneur. Le socle OAuth est maintenant réellement conforme RFC 9700 dans la grâce, et le bearer reste fail-closed sur tous les chemins testés — mais deux clôtures « Corrigé » de plus se sont révélées partielles au rejeu des témoins d'origine, et une revendication du premier audit externe (le mien) est tombée : un « plafonné avant bufferisation » se mesure avec un corps compressé, pas seulement avec un corps clair.
+
+---
+
+## 🔁🔁🔁🔁🔁 Cinquième contre-audit — plage `b40124c..e0f8852` (2026-09-08, soir)
+
+> Note Claude — contre-vérification adverse des 4 commits `081e254` (borne de décompression), `26fc722` (migration `0012`, révocations dashboard héritées), `44137c0` (redaction), `e0f8852` (docs `adverse-audit-followup-2026-09-08.md`). Témoins rejoués sur le **vrai chemin streaming** (flux `aiter_raw` ET vrai serveur HTTP local via httpcore — le mainteneur signale à juste titre que les transports préchargés sont hors frontière), PostgreSQL 16 jetable pour la migration avec 13 familles semées à `0010`, 26+ témoins de redaction. Intégrité : `/usr/bin/git`, `gh pr view` authentifié. Aucun fichier du code modifié.
+
+### 🛑 Publication — inchangé, aggravé
+
+`ls-remote` et `gh pr view 3` concordent : **PR #3 toujours à `cf40e9b`**, désormais **7 commits non poussés** (lot scripté en 2 s). **La HAUTE reconnue par le mainteneur reste sur la PR publique.** Le document de suivi élude ce point (« must be verified separately ») au lieu de le nommer. Poussée telle quelle, la PR unique porterait maintenant deux migrations (`0011`, `0012`) que le mainteneur avait demandé d'isoler.
+
+### Intégrité : ✅ confirmée
+
+Périmètre conforme aux messages, rien hors sujet, aucune dépendance/CI/Docker touchée, aucun code suspect, **zéro assertion ou test supprimé**, aucun secret (instrument validé 4/4), docs en ajout pur, **co-livraison disposition/correctif enfin séparée** (commit docs distinct). Ré-exécuté : **151 unit passed**, 162 collectés, ruff/mypy verts, `alembic heads` = `0012` unique. Non vérifiable ici : « 161 passed » avec PostgreSQL.
+
+### Verdict par constat du 4ᵉ contre-audit
+
+| Constat | Verdict adverse |
+|---|---|
+| A — MOY. bombe de décompression | ✅ **CORRIGÉ.** Le client lit `aiter_raw` et décode lui-même avec `max_length` ; encodages chaînés refusés **avant tout décodage** : `gzip,gzip,gzip` 512 MiB (243 B sur le fil) → pic **0,01 MiB** flux / 0,28 MiB vrai serveur (contre 1,07 GiB au 4ᵉ tour) ; gzip 100 MiB → 20,2 MiB (≈ 2 × plafond + chunk, le ×2 = tampon de sortie zlib), identique sur vrai serveur ; `br`/`zstd`/`x-gzip` → refus ; en-tête menteur → refus ; `Content-Length` menteur → refus. Témoins positifs : 9,9 MiB depuis 10 KiB gzip → ACCEPT **identique octet à octet** ; exactement 10 MiB → ACCEPT ; 10 MiB + 1 → REJECT ; pas de troncature silencieuse (`unconsumed_tail` jamais non vide avant `MAX+1`). Unique point de sortie HTTP vérifié (`client.stream` → `_bounded_response`). Transport préchargé : 209 MiB déjà alloués dans `Response.__init__` avant le refus de taille finale — hors frontière, documenté, sans effet en prod (transport httpx streame). **Prix en disponibilité (fail-closed)** : deflate brut sans en-tête zlib désormais refusé ; gzip multi-membres (`cat a.gz b.gz`) refusé (httpx ne décodait de toute façon que le premier membre — l'ancien comportement était lui-même faux) ; **corps vide + `Content-Encoding: gzip` → « Truncated »** alors que 5 endpoints attendent un 204 — un reverse proxy qui pose l'en-tête sur un 204 vide les casse. Le test du mainteneur (1 MiB / 16 MiB, `peak < 5×`) est un vrai témoin borné mais mono-couche ; la bombe chaînée n'est couverte que par `not is_stream_consumed` (assertion plus forte, mais variante). |
+| B — MOY. migration `0011` ignorant les révocations dashboard antérieures | ✅ **CORRIGÉ, aucune sur-révocation.** 13 familles semées à `0010`, montée `0011` (les `F_dash_legacy*` restent `None`, comme au 4ᵉ tour) puis `0012`, puis **service réel** (bearer + refresh) : F_dash_legacy (avec ou sans audit), F_dash_legacy_rotated (audit présent, R1/M1 vivants → famille entière coupée), F_partial → **REVOKED, bearer et refresh refusés** ; F_alive (rotation saine) → intacte, refresh OK ; F_static → non touché ; faux positif recherché et non trouvé (l'action `mcp_token.revoked` n'est écrite que par le dashboard, jamais par la rotation). Idempotent ×2 (md5 des 4 tables identiques), downgrade no-op documenté, tête unique. **Sous-révocation résiduelle documentée** : F_dash_legacy_rotated_**noaudit** (révocation dashboard suivie d'une rotation, audit absent) est indiscernable d'une rotation saine → reste vivante ; aucun code de purge d'audit dans `src/`, donc atteignable seulement par suppression manuelle en base. Réserve : le test du mainteneur est une **variante** (tables ad hoc réduites, sans schéma Alembic réel ni service, sauté sans PostgreSQL) — la preuve ci-dessus est celle de l'auditeur. |
+| C — BASSE redaction | ⚠️ **PARTIEL — fuites d'origine closes, deux régressions.** Clos : `git clone bot:ghp_secret@example.test:o/r.git`, `git:ghp_x@github.com:o/r.git`, `1234:5678@host/r`, `0000:1234@10.0.0.1/x`, `bot:pa/ss@host/r`, parenthèses/guillemets/point final, `24:00@`/`12:60@` (12 fuites). Intacts : `12:30@office`, `meeting 12:30@office/room`, `user@example.com`, `git@github.com:o/r.git`, `time 09:45@site/log`. **Régression fuite** : `bot:ghp(leak)@host/r` était redigé, **fuit** maintenant (parenthèses retirées du jeu de caractères de l'autorité). **Régression faux positif** : `ratio 1:2@scale` était intact, redigé maintenant (exemption `isdecimal` remplacée par HH:MM strict). Non corrigé et reconnu : `release:v2@stable/notes`. Terminateurs toujours ouverts (préexistant) : `, ; [ ] < > ? #`. Couche audit persistée uniquement ; sévérité BASSE inchangée. |
+
+### Sort des 7 résidus du 4ᵉ tour
+
+| Résidu | Disposition réelle |
+|---|---|
+| (a) requête bearer acceptée pendant une révocation ouverte | **Déclaré ouvert** par le mainteneur, non traité |
+| (b) `revoke_oauth_family` no-op silencieux + audit trompeur | **Passé sous silence** |
+| (c) `grace=0` sans test dédié | **Passé sous silence** (aucun test ajouté) |
+| (d) paire servie à utilisateur désactivé (cache chaud) | **Déclaré ouvert**, non traité |
+| (e) commits non poussés / HAUTE sur la PR | **Éludé** (ni chiffré ni nommé) — 7 non poussés |
+| (f) scission en 3 PR | **Déclaré ouvert**, non fait |
+| (g) co-livraison disposition/correctif | ✅ **Traité** (commit docs séparé) |
+
+### État après cinquième contre-audit
+
+| | |
+|---|---|
+| CRITIQUE | 0 |
+| HAUTE | 0 dans l'arbre local — **1 sur la PR publique** (inchangé depuis le 4ᵉ tour) |
+| MOYENNE | **0** applicative résiduelle (les deux du 4ᵉ tour sont réellement corrigées, prouvé sur chemin réel et PostgreSQL réel) |
+| BASSE | ~8 : redaction (2 régressions + 1 faux positif reconnu + terminateurs), (a) (b) (c) (d), 204 vide + en-tête gzip cassant 5 endpoints, sous-révocation sans audit |
+
+**Actions prioritaires** : (1) **pousser** — ou retirer la PR de revue : c'est le seul point HAUTE et il ne dépend d'aucun code ; (2) traiter les résidus (a) et (b) (quelques lignes chacun : `UPDATE … WHERE revoked_at IS NULL` + rowcount ; échec explicite sur famille absente) ; (3) tolérer le corps vide avec `Content-Encoding` sur les 204 ; (4) ajouter le test `grace=0` ; (5) scinder en 3 PR. Le code local est maintenant au niveau que le premier audit croyait déjà atteint — mais il n'est pas là où les relecteurs le regardent.
+
+---
+
 ## 🎯 Verdict initial de l'audit, conservé à titre historique
 
 **Aucun malware, aucune backdoor, aucune dépendance piégée.** Code de facture professionnelle, architecture volontairement fail-closed, la plupart des revendications de sécurité sont vérifiées dans le code.

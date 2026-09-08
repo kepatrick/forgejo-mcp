@@ -1,5 +1,6 @@
 import gzip
 import json
+import tracemalloc
 import zlib
 from collections.abc import Callable
 
@@ -7,7 +8,60 @@ import httpx
 import pytest
 
 from forgejo_mcp.application.errors import ExternalServiceUnavailable, NotFound, ValidationFailed
+from forgejo_mcp.forgejo import client as client_module
 from forgejo_mcp.forgejo.client import ForgejoClient, normalize_base_url
+
+
+@pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+async def test_decompression_memory_is_bounded(monkeypatch, encoding) -> None:
+    limit = 1024 * 1024
+    monkeypatch.setattr(client_module, "MAX_FORGEJO_RESPONSE_BYTES", limit)
+    encode = gzip.compress if encoding == "gzip" else zlib.compress
+    payload = encode(bytes(16 * limit))
+    response = httpx.Response(
+        200,
+        headers={"Content-Encoding": encoding},
+        stream=httpx.ByteStream(payload),
+        request=httpx.Request("GET", "https://example.test"),
+    )
+    tracemalloc.start()
+    try:
+        with pytest.raises(ExternalServiceUnavailable, match="too large"):
+            await client_module._bounded_response(response)
+        _, peak = tracemalloc.get_traced_memory()
+        assert peak < 5 * limit
+    finally:
+        tracemalloc.stop()
+        await response.aclose()
+
+
+@pytest.mark.parametrize("encoding", ["gzip,gzip,gzip", "br", "zstd"])
+async def test_reject_unsupported_encoding_before_reading(encoding) -> None:
+    response = httpx.Response(
+        200,
+        headers={"Content-Encoding": encoding},
+        stream=httpx.ByteStream(b"not read"),
+        request=httpx.Request("GET", "https://example.test"),
+    )
+    with pytest.raises(ExternalServiceUnavailable, match="Unsupported"):
+        await client_module._bounded_response(response)
+    assert not response.is_stream_consumed
+    await response.aclose()
+
+
+@pytest.mark.parametrize(
+    "payload", [gzip.compress(b"ok")[:-1], b"bad", gzip.compress(b"ok") + b"junk"]
+)
+async def test_reject_invalid_compression(payload) -> None:
+    response = httpx.Response(
+        200,
+        headers={"Content-Encoding": "gzip"},
+        stream=httpx.ByteStream(payload),
+        request=httpx.Request("GET", "https://example.test"),
+    )
+    with pytest.raises(ExternalServiceUnavailable, match="compression"):
+        await client_module._bounded_response(response)
+    await response.aclose()
 
 
 def test_normalize_base_url() -> None:

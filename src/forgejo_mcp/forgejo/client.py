@@ -7,6 +7,7 @@ import ipaddress
 import re
 import time
 import zipfile
+import zlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -1829,7 +1830,11 @@ class ForgejoClient:
                         timeout=self.timeout,
                         verify=verify_tls,
                         follow_redirects=False,
-                        headers={"Accept": accept, "User-Agent": "forgejo-mcp/0.1.0"},
+                        headers={
+                            "Accept": accept,
+                            "Accept-Encoding": "gzip, deflate",
+                            "User-Agent": "forgejo-mcp/0.1.0",
+                        },
                         transport=self.transport,
                     ) as client,
                     client.stream(
@@ -2151,12 +2156,38 @@ async def _bounded_response(response: httpx.Response) -> httpx.Response:
         if declared_length > MAX_FORGEJO_RESPONSE_BYTES:
             raise ExternalServiceUnavailable("Forgejo response is too large")
     content = bytearray()
-    async for chunk in response.aiter_bytes():
-        content.extend(chunk)
-        if len(content) > MAX_FORGEJO_RESPONSE_BYTES:
+    encoding = response.headers.get("Content-Encoding", "identity").strip().lower()
+    if encoding not in {"identity", "gzip", "deflate"}:
+        raise ExternalServiceUnavailable("Unsupported Forgejo response encoding")
+    # Preloaded test/custom-transport responses have already been decoded.
+    if response.is_stream_consumed:
+        if len(response.content) > MAX_FORGEJO_RESPONSE_BYTES:
             raise ExternalServiceUnavailable("Forgejo response is too large")
+        content.extend(response.content)
+    else:
+        decoder = (
+            zlib.decompressobj(31 if encoding == "gzip" else 15) if encoding != "identity" else None
+        )
+        wire_bytes = 0
+        async for chunk in response.aiter_raw():
+            wire_bytes += len(chunk)
+            if wire_bytes > MAX_FORGEJO_RESPONSE_BYTES:
+                raise ExternalServiceUnavailable("Forgejo response is too large")
+            if decoder is not None:
+                try:
+                    # Never let HTTPX decode an unbounded raw chunk first.
+                    chunk = decoder.decompress(chunk, MAX_FORGEJO_RESPONSE_BYTES - len(content) + 1)
+                except zlib.error:
+                    raise ExternalServiceUnavailable("Invalid Forgejo compression") from None
+                if decoder.unused_data:
+                    raise ExternalServiceUnavailable("Invalid Forgejo compression")
+            if len(content) + len(chunk) > MAX_FORGEJO_RESPONSE_BYTES:
+                raise ExternalServiceUnavailable("Forgejo response is too large")
+            content.extend(chunk)
+        if decoder is not None and not decoder.eof:
+            raise ExternalServiceUnavailable("Truncated Forgejo compression")
     headers = httpx.Headers(response.headers)
-    # aiter_bytes() has already decoded every Content-Encoding. Keeping the
+    # The body has already been decoded. Keeping the
     # encoding or wire-length headers would make the reconstructed response
     # decode the buffered representation a second time.
     headers.pop("Content-Encoding", None)

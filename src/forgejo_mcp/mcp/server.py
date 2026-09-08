@@ -15,6 +15,7 @@ from mcp.types import CallToolResult, TextContent, Tool, ToolAnnotations
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from starlette.middleware import Middleware
 from starlette.middleware.authentication import AuthenticationMiddleware
+from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -239,6 +240,20 @@ def build_mcp_runtime(
             Middleware(
                 McpOriginValidationMiddleware,
                 allowed_origins=settings.mcp_allowed_origins,
+            ),
+            Middleware(
+                CORSMiddleware,
+                allow_origins=settings.mcp_allowed_origins,
+                allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+                allow_headers=[
+                    "Authorization",
+                    "Content-Type",
+                    "MCP-Protocol-Version",
+                    "MCP-Session-Id",
+                ],
+                expose_headers=["WWW-Authenticate", "MCP-Session-Id"],
+                allow_credentials=False,
+                max_age=600,
             ),
             Middleware(AuthenticationMiddleware, backend=BearerAuthBackend(verifier)),
             Middleware(AuthContextMiddleware),

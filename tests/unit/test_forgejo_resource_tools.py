@@ -460,6 +460,9 @@ async def test_development_workflow_tools_use_supported_forgejo_endpoints() -> N
     assert (await client.list_repository_contents(**common, path=None, ref="main")).items[0][
         "path"
     ] == "README.md"
+    assert (await client.list_repository_contents(**common, path="", ref="main")).items[0][
+        "path"
+    ] == "README.md"
     assert (
         await client.create_branch(**common, branch="feature", from_ref="main")
     ).name == "feature"

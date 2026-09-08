@@ -6,7 +6,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from mcp.server.auth.provider import AccessToken
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm.attributes import set_committed_value
 
 from forgejo_mcp.auth.tokens import hash_token, mcp_token_prefix
 from forgejo_mcp.db.models import McpToken, RecordStatus
@@ -50,7 +52,19 @@ class McpBearerAuthenticator:
         if not _active(record, now):
             return None
 
-        record.last_used_at = now
+        updated = await self.session.scalar(
+            update(McpToken)
+            .where(
+                McpToken.id == record.id, McpToken.enabled.is_(True), McpToken.revoked_at.is_(None)
+            )
+            .values(last_used_at=now)
+            .returning(McpToken.id)
+            .execution_options(synchronize_session=False)
+        )
+        if updated is None:
+            await self.session.rollback()
+            return None
+        set_committed_value(record, "last_used_at", now)
         await self.session.commit()
         return AuthenticatedMcpToken(
             token_id=record.id,

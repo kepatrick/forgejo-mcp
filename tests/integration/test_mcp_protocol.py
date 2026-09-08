@@ -296,6 +296,7 @@ def test_mcp_initialize_list_and_call(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.setattr(ForgejoClient, "compare_refs", fake_compare_refs)
     app = create_app(
         Settings(
+            forgejo_allowed_base_urls=["https://git.example.test"],
             environment="test",
             database_url=DATABASE_URL,
             credential_encryption_key_file=key_file,

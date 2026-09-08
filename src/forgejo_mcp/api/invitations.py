@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from forgejo_mcp.api.dependencies import InvitationServiceDep
 from forgejo_mcp.application.errors import ApplicationError
+from forgejo_mcp.auth.client_ip import get_client_ip
 from forgejo_mcp.auth.rate_limit import LoginRateLimiter
 from forgejo_mcp.auth.tokens import hash_token
 
@@ -32,7 +33,7 @@ class InvitationAcceptedResponse(BaseModel):
 
 
 def rate_limit_key(request: Request, token: str) -> str:
-    client_ip = request.client.host if request.client else "unknown"
+    client_ip = get_client_ip(request, request.app.state.settings) or "unknown"
     return f"{client_ip}:{hash_token(token)}"
 
 
@@ -41,12 +42,13 @@ async def invitation_context(
     payload: InvitationTokenRequest, request: Request, service: InvitationServiceDep
 ) -> InvitationContextResponse:
     key = rate_limit_key(request, payload.token)
-    _invitation_limiter.check(key)
+    lease = _invitation_limiter.check(key)
     try:
         context = await service.context(payload.token)
     except ApplicationError:
-        _invitation_limiter.failure(key)
+        _invitation_limiter.failure(lease)
         raise
+    _invitation_limiter.success(lease)
     return InvitationContextResponse(
         display_name=context.display_name,
         username=context.username,
@@ -60,11 +62,11 @@ async def accept_invitation(
     payload: AcceptInvitationRequest, request: Request, service: InvitationServiceDep
 ) -> InvitationAcceptedResponse:
     key = rate_limit_key(request, payload.token)
-    _invitation_limiter.check(key)
+    lease = _invitation_limiter.check(key)
     try:
         username = await service.accept(payload.token, payload.password)
     except ApplicationError:
-        _invitation_limiter.failure(key)
+        _invitation_limiter.failure(lease)
         raise
-    _invitation_limiter.success(key)
+    _invitation_limiter.success(lease)
     return InvitationAcceptedResponse(username=username)

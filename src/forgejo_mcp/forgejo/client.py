@@ -7,6 +7,7 @@ import ipaddress
 import re
 import time
 import zipfile
+import zlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
@@ -429,7 +430,7 @@ class ForgejoClient:
         ref: str | None,
     ) -> BoundedList[dict[str, Any]]:
         suffix = "contents"
-        if path is not None:
+        if path:
             suffix += f"/{quote(_file_path(path), safe='/')}"
         params = {"ref": _ref_value(ref, "ref")} if ref is not None else None
         payload = await self._get_json(
@@ -1829,7 +1830,11 @@ class ForgejoClient:
                         timeout=self.timeout,
                         verify=verify_tls,
                         follow_redirects=False,
-                        headers={"Accept": accept, "User-Agent": "forgejo-mcp/0.1.0"},
+                        headers={
+                            "Accept": accept,
+                            "Accept-Encoding": "gzip, deflate",
+                            "User-Agent": "forgejo-mcp/0.1.0",
+                        },
                         transport=self.transport,
                     ) as client,
                     client.stream(
@@ -1942,9 +1947,7 @@ class ForgejoClient:
                 raise ExternalServiceUnavailable("Forgejo login page is too large")
             marker = PRIVATE_VERSION_PATTERN.search(login_response.text)
             if marker is None:
-                raise ExternalServiceUnavailable(
-                    "Forgejo login page did not advertise a version"
-                )
+                raise ExternalServiceUnavailable("Forgejo login page did not advertise a version")
             private_version = marker.group("version")
             return ForgejoVersion(version=private_version.replace("~", "+", 1))
         try:
@@ -2144,6 +2147,20 @@ def _is_private_migration_host(hostname: str) -> bool:
 
 
 async def _bounded_response(response: httpx.Response) -> httpx.Response:
+    # These responses have no representation body (RFC 9110), even when a
+    # proxy supplies representation metadata such as Content-Encoding.
+    if response.status_code in {204, 304} or response.request.method == "HEAD":
+        headers = httpx.Headers(response.headers)
+        headers.pop("Content-Encoding", None)
+        headers.pop("Content-Length", None)
+        headers.pop("Transfer-Encoding", None)
+        return httpx.Response(
+            response.status_code,
+            headers=headers,
+            content=b"",
+            request=response.request,
+            extensions=response.extensions,
+        )
     content_length = response.headers.get("Content-Length")
     if content_length is not None:
         try:
@@ -2153,13 +2170,46 @@ async def _bounded_response(response: httpx.Response) -> httpx.Response:
         if declared_length > MAX_FORGEJO_RESPONSE_BYTES:
             raise ExternalServiceUnavailable("Forgejo response is too large")
     content = bytearray()
-    async for chunk in response.aiter_bytes():
-        content.extend(chunk)
-        if len(content) > MAX_FORGEJO_RESPONSE_BYTES:
+    encoding = response.headers.get("Content-Encoding", "identity").strip().lower()
+    if encoding not in {"identity", "gzip", "deflate"}:
+        raise ExternalServiceUnavailable("Unsupported Forgejo response encoding")
+    # Preloaded test/custom-transport responses have already been decoded.
+    if response.is_stream_consumed:
+        if len(response.content) > MAX_FORGEJO_RESPONSE_BYTES:
             raise ExternalServiceUnavailable("Forgejo response is too large")
+        content.extend(response.content)
+    else:
+        decoder = (
+            zlib.decompressobj(31 if encoding == "gzip" else 15) if encoding != "identity" else None
+        )
+        wire_bytes = 0
+        async for chunk in response.aiter_raw():
+            wire_bytes += len(chunk)
+            if wire_bytes > MAX_FORGEJO_RESPONSE_BYTES:
+                raise ExternalServiceUnavailable("Forgejo response is too large")
+            if decoder is not None:
+                try:
+                    # Never let HTTPX decode an unbounded raw chunk first.
+                    chunk = decoder.decompress(chunk, MAX_FORGEJO_RESPONSE_BYTES - len(content) + 1)
+                except zlib.error:
+                    raise ExternalServiceUnavailable("Invalid Forgejo compression") from None
+                if decoder.unused_data:
+                    raise ExternalServiceUnavailable("Invalid Forgejo compression")
+            if len(content) + len(chunk) > MAX_FORGEJO_RESPONSE_BYTES:
+                raise ExternalServiceUnavailable("Forgejo response is too large")
+            content.extend(chunk)
+        if decoder is not None and not decoder.eof:
+            raise ExternalServiceUnavailable("Truncated Forgejo compression")
+    headers = httpx.Headers(response.headers)
+    # The body has already been decoded. Keeping the
+    # encoding or wire-length headers would make the reconstructed response
+    # decode the buffered representation a second time.
+    headers.pop("Content-Encoding", None)
+    headers.pop("Content-Length", None)
+    headers.pop("Transfer-Encoding", None)
     return httpx.Response(
         status_code=response.status_code,
-        headers=response.headers,
+        headers=headers,
         content=bytes(content),
         request=response.request,
         extensions=response.extensions,
@@ -2235,6 +2285,7 @@ def _ref_value(value: str, label: str, *, max_length: int = 255) -> str:
     normalized = value.strip()
     if (
         not normalized
+        or normalized in {".", ".."}
         or len(normalized) > max_length
         or any(ord(character) < 32 or ord(character) == 127 for character in normalized)
     ):
@@ -2249,7 +2300,7 @@ def _file_path(value: str) -> str:
         not normalized
         or len(normalized) > 1024
         or normalized.startswith("/")
-        or any(segment == ".." for segment in segments)
+        or any(segment in {".", ".."} for segment in segments)
         or any(ord(character) < 32 or ord(character) == 127 for character in normalized)
     ):
         raise ValidationFailed("path is invalid")
@@ -2260,6 +2311,7 @@ def _repository_name(value: str, label: str = "repository") -> str:
     normalized = value.strip()
     if (
         not normalized
+        or normalized in {".", ".."}
         or len(normalized) > 255
         or "/" in normalized
         or any(ord(character) < 32 or ord(character) == 127 for character in normalized)

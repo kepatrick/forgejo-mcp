@@ -1,5 +1,7 @@
 # Forgejo MCP
 
+Upgrading an existing installation? Read [security upgrade instructions](docs/security/upgrade-hardening.md).
+
 [繁體中文](README.zh-TW.md)
 
 Maintainers: [versioned Docker image and GitHub Release workflow](docs/releasing.md).

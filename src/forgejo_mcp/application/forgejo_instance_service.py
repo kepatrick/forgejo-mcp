@@ -36,6 +36,10 @@ class ForgejoInstanceService:
         normalized_url = normalize_base_url(base_url)
         if not self.settings.permits_forgejo_base_url(normalized_url):
             raise ValidationFailed("Forgejo base URL is not permitted by deployment policy")
+        if not verify_tls and not self.settings.allow_unverified_forgejo_tls:
+            raise ValidationFailed(
+                "unverified Forgejo TLS is disabled; enable it explicitly in deployment policy"
+            )
         if (
             urlsplit(normalized_url).scheme == "http"
             and not self.settings.allow_insecure_forgejo_http

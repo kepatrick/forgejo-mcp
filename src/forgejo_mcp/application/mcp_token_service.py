@@ -6,6 +6,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from forgejo_mcp.application.errors import InvalidOperation, NotFound, ValidationFailed
+from forgejo_mcp.application.oauth_revocation import (
+    oauth_family_for_mcp_token,
+    revoke_oauth_family,
+)
 from forgejo_mcp.auth.tokens import hash_token, mcp_token_prefix, new_mcp_token
 from forgejo_mcp.db.models import McpToken, RecordStatus
 from forgejo_mcp.db.repositories import AuditRepository, McpTokenRepository, UserRepository
@@ -119,8 +123,27 @@ class McpTokenService:
     ) -> None:
         if record.revoked_at is not None:
             raise InvalidOperation("MCP token is already revoked")
+        now = datetime.now(UTC)
+        family_id = (
+            await oauth_family_for_mcp_token(self.session, record.id)
+            if record.kind == "oauth"
+            else None
+        )
+        if family_id is not None:
+            await revoke_oauth_family(self.session, family_id, now)
+            self.audit.record(
+                actor_account_id=actor_account_id,
+                action="oauth.token_family_revoked_by_dashboard",
+                target_type="oauth_family",
+                target_id=str(family_id),
+                details={
+                    "user_id": str(record.user_id),
+                    "mcp_token_id": str(record.id),
+                    "forced_by_admin": forced_by_admin,
+                },
+            )
         record.enabled = False
-        record.revoked_at = datetime.now(UTC)
+        record.revoked_at = now
         self.audit.record(
             actor_account_id=actor_account_id,
             action="mcp_token.revoked",

@@ -1,5 +1,9 @@
 # Forgejo MCP
 
+Optional [OAuth authorization](docs/security/oauth-2.1.md) is disabled by default.
+Read the [upgrade and rollback notes](docs/security/oauth-upgrade.md) before enabling it.
+For Claude/OpenAI connection failures, see [edge troubleshooting](docs/oauth-client-edge-troubleshooting.md).
+
 [繁體中文](README.zh-TW.md)
 
 Maintainers: [versioned Docker image and GitHub Release workflow](docs/releasing.md).

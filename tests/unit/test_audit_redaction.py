@@ -49,6 +49,19 @@ def test_migration_credentials_are_redacted_but_upstream_remains_auditable() -> 
     assert "token-value" not in repr(result.value)
 
 
+def test_adverse_audit_credentials_are_redacted() -> None:
+    for value, secret in (
+        ("1234:5678@host/r", "5678"),
+        ("git clone bot:ghp_secret@example.test:o/r.git", "ghp_secret"),
+        ("(bot:ghp_leak@host)", "ghp_leak"),
+        ('"bot:ghp_leak@host"', "ghp_leak"),
+        ("see bot:ghp_leak@host.", "ghp_leak"),
+        ("bot:pa/ss@host/r", "pa/ss"),
+    ):
+        assert secret not in repr(redact_arguments({"path": value}).value)
+        assert secret not in repr(extract_target({"path": value}))
+
+
 def test_credentials_embedded_in_remote_url_are_redacted_before_persistence() -> None:
     result = redact_arguments(
         {

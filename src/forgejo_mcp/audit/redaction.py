@@ -19,12 +19,12 @@ _URL_CREDENTIALS = re.compile(
     r"(?P<scheme>[a-zA-Z][a-zA-Z0-9+.-]*://)[^/\s]+@",
 )
 _AUTHORITY_CANDIDATE = re.compile(
-    r"(?<![^\s(/])(?P<authority>(?=[^/\s]*:)(?=[^/\s]*@)[^/\s]+)"
-    r"(?P<terminator>/|$|\s)",
+    r"(?<![^\s(/\"'])(?P<authority>[^/:\s\"'()]+:(?!//)[^\s\"'()]+@[^/\s\"'()]+)"
+    r"(?P<terminator>/|$|\s|[\"')])",
 )
 _AUTHORITY_HOST = re.compile(
     r"(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)"
-    r"(?::[0-9]+)?",
+    r"(?::[A-Za-z0-9._-]+)?\.?",
 )
 _CAMEL_CASE_BOUNDARY = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 _TARGET_TEXT_LIMIT = 512
@@ -149,7 +149,8 @@ def _redact_schemeless_authority(match: re.Match[str]) -> str:
         or not username
         or not password
         or "@" in username
-        or (username.isdecimal() and password.isdecimal())
+        # Keep clock-like prose; do not exempt arbitrary numeric credentials.
+        or (re.fullmatch(r"(?:[01]?[0-9]|2[0-3]):[0-5][0-9]", userinfo) is not None)
         or _AUTHORITY_HOST.fullmatch(host) is None
     ):
         return match.group(0)

@@ -15,7 +15,7 @@
 - OpenSSL；
 - 可以執行下列 command 的 shell。
 
-你也需要符合已鎖定 Forgejo 16.0.2 API contract 的既有 Forgejo instance，而且 App container 必須能連到其 HTTPS API URL。
+你也需要符合已鎖定 Forgejo 16.0.2 或 16.0.3 API contract 的既有 Forgejo instance，而且 App container 必須能連到其 HTTPS API URL。
 
 本指南的所有 command 都應在 repository 根目錄執行。
 

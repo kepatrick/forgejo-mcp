@@ -1,0 +1,45 @@
+name: Forgejo compatibility E2E
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forgejo-e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  openapi-compatibility:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: ./scripts/test-forgejo-openapi-compatibility.sh
+
+  full-e2e:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        forgejo-version:
+          - 16.0.2
+          - 16.0.3
+    env:
+      FORGEJO_IMAGE: data.forgejo.org/forgejo/forgejo:${{ matrix.forgejo-version }}-rootless
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: ./scripts/test-full-docker-e2e.sh

@@ -15,7 +15,7 @@ Install:
 - OpenSSL;
 - a shell capable of running the commands below.
 
-You also need an existing Forgejo instance compatible with the locked Forgejo 16.0.2 API contract. The App container must be able to reach its HTTPS API URL.
+You also need an existing Forgejo instance compatible with the locked Forgejo 16.0.2 or 16.0.3 API contract. The App container must be able to reach its HTTPS API URL.
 
 Run every command in this guide from the repository root.
 

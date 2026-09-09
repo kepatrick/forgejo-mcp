@@ -7,7 +7,6 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from mcp.shared.version import LATEST_PROTOCOL_VERSION
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -83,6 +82,7 @@ TOOLS = {
     "forgejo_create_release",
 }
 TOOL_NAME = "forgejo_get_current_user"
+MCP_PROTOCOL_VERSION = "2025-06-18"
 
 
 async def load_invocations() -> list[ToolInvocation]:
@@ -207,7 +207,7 @@ def rpc(client: TestClient, token: str, payload: dict[str, Any], session_id: str
     }
     if session_id is not None:
         headers["MCP-Session-Id"] = session_id
-        headers["MCP-Protocol-Version"] = LATEST_PROTOCOL_VERSION
+        headers["MCP-Protocol-Version"] = MCP_PROTOCOL_VERSION
     return client.post("/mcp", headers=headers, json=payload)
 
 
@@ -311,13 +311,14 @@ def test_mcp_initialize_list_and_call(tmp_path: Path, monkeypatch: pytest.Monkey
                 "id": 1,
                 "method": "initialize",
                 "params": {
-                    "protocolVersion": LATEST_PROTOCOL_VERSION,
+                    "protocolVersion": MCP_PROTOCOL_VERSION,
                     "capabilities": {},
                     "clientInfo": {"name": "integration-test", "version": "1.0"},
                 },
             },
         )
         assert initialized.status_code == 200
+        assert initialized.json()["result"]["protocolVersion"] == MCP_PROTOCOL_VERSION
         assert initialized.json()["result"]["serverInfo"]["name"] == "Forgejo MCP"
         session_id = initialized.headers["mcp-session-id"]
 

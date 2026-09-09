@@ -80,7 +80,7 @@ services:
       retries: 10
 
   forgejo:
-    image: data.forgejo.org/forgejo/forgejo:16.0.2-rootless
+    image: ${FORGEJO_IMAGE:-data.forgejo.org/forgejo/forgejo:16.0.3-rootless}
     profiles: ["test-forgejo"]
     user: "1000:1000"
     environment:

@@ -1,0 +1,30 @@
+{
+  "source_version": "16.0.2+gitea-1.22.0",
+  "target_version": "16.0.3+gitea-1.22.0",
+  "summary": {
+    "total": 2,
+    "added": 1,
+    "removed": 0,
+    "changed": 1,
+    "endpoint_changes": 0,
+    "schema_changes": 1,
+    "other_changes": 1
+  },
+  "differences": [
+    {
+      "kind": "added",
+      "pointer": "/definitions/IssueMeta/required",
+      "after": [
+        "index",
+        "owner",
+        "repo"
+      ]
+    },
+    {
+      "kind": "changed",
+      "pointer": "/info/version",
+      "before": "16.0.2+gitea-1.22.0",
+      "after": "16.0.3+gitea-1.22.0"
+    }
+  ]
+}

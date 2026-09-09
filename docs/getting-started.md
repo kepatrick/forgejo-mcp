@@ -21,11 +21,20 @@ Run every command in this guide from the repository root.
 
 ## 2. Create the deployment configuration
 
+These steps are for a **new installation only**. For an existing installation,
+follow the [upgrade guide](security/upgrade-hardening.md) instead; do not overwrite
+its configuration or regenerate its secrets.
+
 Copy the example environment file:
 
 ```bash
 cp deploy/compose.example.env deploy/.env
 ```
+
+Before starting, edit `deploy/.env` and replace `FMCP_FORGEJO_ALLOWED_BASE_URLS`
+with the exact URL of your Forgejo instance; `git.example.com` is only a placeholder.
+The secret-generation commands below assume `POSTGRES_USER` and `POSTGRES_DB` are
+both `forgejo_mcp`; use matching values in `database_url` if you change them.
 
 For direct access through `http://127.0.0.1:8000`, keep:
 
@@ -40,6 +49,7 @@ Do not commit `deploy/.env`.
 ## 3. Generate the required secrets
 
 ```bash
+umask 077
 mkdir -p deploy/secrets
 openssl rand -base64 32 > deploy/secrets/admin_password
 openssl rand -base64 32 > deploy/secrets/credential_key

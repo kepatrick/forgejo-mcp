@@ -1,5 +1,7 @@
 # Forgejo MCP
 
+升級既有部署？請先閱讀[安全加固升級指南（英文）](docs/security/upgrade-hardening.md)。
+
 [English](README.md)
 
 維護者發布流程：[版本化 Docker image 與 GitHub Release](docs/releasing.zh-TW.md)。
@@ -53,11 +55,18 @@ v0.1.0 支援的部署方式會把 React Dashboard build 進 App image，並一�
 
 ## 快速啟動
 
+**以下僅適用於全新安裝。** 既有部署請依[升級指南（英文）](docs/security/upgrade-hardening.md)操作，不要重新產生資料庫密碼或 encryption key。
+
 在 repository 根目錄執行：
 
 ```bash
 cp deploy/compose.example.env deploy/.env
+```
 
+啟動前先編輯 `deploy/.env`：將 `FMCP_FORGEJO_ALLOWED_BASE_URLS` 改成實際 Forgejo base URL，不要保留 `git.example.com` 範例值。正式 HTTPS 部署使用 `FMCP_COOKIE_SECURE=true`；`false` 僅適用於直接連線 localhost HTTP。下列指令假設 `POSTGRES_USER` 與 `POSTGRES_DB` 維持預設的 `forgejo_mcp`；若有更動，`database_url` 也必須使用相同值。
+
+```bash
+umask 077
 mkdir -p deploy/secrets
 openssl rand -base64 32 > deploy/secrets/admin_password
 openssl rand -base64 32 > deploy/secrets/credential_key

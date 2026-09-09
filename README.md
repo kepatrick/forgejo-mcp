@@ -55,11 +55,18 @@ The supported v0.1.0 deployment builds the React Dashboard into the App image an
 
 ## Quick start
 
+**New installations only.** For an existing deployment, follow the [upgrade guide](docs/security/upgrade-hardening.md); do not regenerate its database password or encryption key.
+
 From the repository root:
 
 ```bash
 cp deploy/compose.example.env deploy/.env
+```
 
+Before starting, edit `deploy/.env`: replace `FMCP_FORGEJO_ALLOWED_BASE_URLS` with your exact Forgejo base URL, not the `git.example.com` placeholder. Use `FMCP_COOKIE_SECURE=true` behind production HTTPS; `false` is only for direct localhost HTTP. The commands below assume the default `POSTGRES_USER` and `POSTGRES_DB` (`forgejo_mcp`); if changed, use matching values in `database_url`.
+
+```bash
+umask 077
 mkdir -p deploy/secrets
 openssl rand -base64 32 > deploy/secrets/admin_password
 openssl rand -base64 32 > deploy/secrets/credential_key

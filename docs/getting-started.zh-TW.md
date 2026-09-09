@@ -21,11 +21,18 @@
 
 ## 2. 建立部署設定
 
+以下僅適用於**全新安裝**。既有部署請改依[升級指南（英文）](security/upgrade-hardening.md)
+操作，不要覆寫原有設定或重新產生 secrets。
+
 複製環境變數範例：
 
 ```bash
 cp deploy/compose.example.env deploy/.env
 ```
+
+啟動前先編輯 `deploy/.env`，將 `FMCP_FORGEJO_ALLOWED_BASE_URLS` 改成實際 Forgejo URL；
+`git.example.com` 只是範例值。下列 secrets 產生指令假設 `POSTGRES_USER` 與
+`POSTGRES_DB` 都是 `forgejo_mcp`；若有更動，`database_url` 也必須使用相同值。
 
 如果直接透過 `http://127.0.0.1:8000` 存取，請維持：
 
@@ -40,6 +47,7 @@ App 位於 HTTPS 後方時應改成 `true`。一般部署應維持 `FMCP_ALLOW_I
 ## 3. 產生必要 secrets
 
 ```bash
+umask 077
 mkdir -p deploy/secrets
 openssl rand -base64 32 > deploy/secrets/admin_password
 openssl rand -base64 32 > deploy/secrets/credential_key

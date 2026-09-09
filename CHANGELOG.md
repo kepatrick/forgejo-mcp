@@ -8,6 +8,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-09
+
 ### Compatibility
 
 - Raise the minimum and only supported deployment target to Forgejo `16.0.3+gitea-1.22.0`; Forgejo 16.0.2 remains a comparative CI baseline and is not supported by this release.

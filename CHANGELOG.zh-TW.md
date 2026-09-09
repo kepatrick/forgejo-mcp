@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-09
+
 ### 相容性
 
 - 將最低且唯一正式支援的部署目標提高至 Forgejo `16.0.3+gitea-1.22.0`；Forgejo 16.0.2 僅保留為 CI comparison baseline，不受此 release 正式支援。

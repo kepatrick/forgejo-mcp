@@ -164,7 +164,7 @@ def provision_dashboard(forgejo_tokens: dict[str, str]) -> dict[str, str]:
             json={
                 "display_name": "Docker Forgejo",
                 "base_url": FORGEJO_INTERNAL_URL,
-                "verify_tls": False,
+                "verify_tls": True,
             },
         ),
         "Forgejo instance configuration",

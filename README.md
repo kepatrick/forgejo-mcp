@@ -1,6 +1,6 @@
 # Forgejo MCP
 
-Minimum supported Forgejo version: **16.0.3**. CI retains 16.0.2 solely as a comparative baseline.
+Upgrading an existing installation? Read [security upgrade instructions](docs/security/upgrade-hardening.md).
 
 [繁體中文](README.zh-TW.md)
 
@@ -55,16 +55,28 @@ The supported v0.1.0 deployment builds the React Dashboard into the App image an
 
 ## Quick start
 
+**New installations only.** For an existing deployment, follow the [upgrade guide](docs/security/upgrade-hardening.md); do not regenerate its database password or encryption key.
+
 From the repository root:
 
 ```bash
 cp deploy/compose.example.env deploy/.env
-# Edit deploy/.env and replace POSTGRES_PASSWORD before continuing.
+```
 
+Before starting, edit `deploy/.env`: replace `FMCP_FORGEJO_ALLOWED_BASE_URLS` with your exact Forgejo base URL, not the `git.example.com` placeholder. Use `FMCP_COOKIE_SECURE=true` behind production HTTPS; `false` is only for direct localhost HTTP. The commands below assume the default `POSTGRES_USER` and `POSTGRES_DB` (`forgejo_mcp`); if changed, use matching values in `database_url`.
+
+```bash
+umask 077
 mkdir -p deploy/secrets
 openssl rand -base64 32 > deploy/secrets/admin_password
 openssl rand -base64 32 > deploy/secrets/credential_key
-chmod 600 deploy/secrets/admin_password deploy/secrets/credential_key
+postgres_password="$(openssl rand -hex 32)"
+printf '%s\n' "$postgres_password" > deploy/secrets/postgres_password
+printf 'postgresql+asyncpg://forgejo_mcp:%s@postgres:5432/forgejo_mcp\n' \
+  "$postgres_password" > deploy/secrets/database_url
+unset postgres_password
+chmod 600 deploy/secrets/admin_password deploy/secrets/credential_key \
+  deploy/secrets/postgres_password deploy/secrets/database_url
 
 docker compose --env-file deploy/.env -f deploy/compose.yaml up --build -d
 ```
@@ -82,6 +94,8 @@ Open <http://127.0.0.1:8000> and sign in with:
 - Password: the value in `deploy/secrets/admin_password`
 
 Change the bootstrap password immediately. Direct localhost HTTP requires `FMCP_COOKIE_SECURE=false`; secure cookies should remain enabled behind HTTPS.
+
+Production startup also requires `FMCP_FORGEJO_ALLOWED_BASE_URLS`, a JSON list containing the exact trusted Forgejo base URL (for example `["https://git.example.com"]`). This out-of-band pin prevents a Dashboard administrator from redirecting user PAT verification to another server. Browser-based MCP clients must add their exact origins to `FMCP_MCP_ALLOWED_ORIGINS`; regular MCP clients do not send an `Origin` header.
 
 For logs, shutdown, clean reset, common startup errors and the optional local Forgejo profile, see [Getting started](docs/getting-started.md).
 

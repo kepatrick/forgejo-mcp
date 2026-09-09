@@ -47,6 +47,7 @@ class ForgejoCredentialService:
             retry_max_delay_seconds=settings.forgejo_retry_max_delay_seconds,
             commit_max_files=settings.commit_max_files,
             commit_max_total_bytes=settings.commit_max_total_bytes,
+            migration_allow_private_hosts=settings.migration_allow_private_hosts,
         )
 
     def cipher(self) -> CredentialCipher:
@@ -84,6 +85,15 @@ class ForgejoCredentialService:
         instance = await self.instances.primary()
         if instance is None:
             raise Conflict("Forgejo instance is not configured")
+        if not self.settings.permits_forgejo_base_url(instance.base_url):
+            raise ConfigurationUnavailable(
+                "configured Forgejo base URL is not permitted by deployment policy"
+            )
+        if not instance.verify_tls and not self.settings.allow_unverified_forgejo_tls:
+            raise ConfigurationUnavailable(
+                "configured Forgejo instance requires unverified TLS, which is disabled "
+                "by deployment policy"
+            )
         try:
             principal = await self.client.get_current_user(
                 base_url=instance.base_url,

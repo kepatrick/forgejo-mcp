@@ -7,11 +7,16 @@ services:
       dockerfile: deploy/Dockerfile
     environment:
       FMCP_ENVIRONMENT: ${FMCP_ENVIRONMENT:-production}
-      FMCP_DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-forgejo_mcp}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-forgejo_mcp}
+      FMCP_DATABASE_URL_FILE: /run/secrets/database_url
       FMCP_LOG_LEVEL: ${FMCP_LOG_LEVEL:-INFO}
       FMCP_LOG_FORMAT: ${FMCP_LOG_FORMAT:-json}
       FMCP_COOKIE_SECURE: ${FMCP_COOKIE_SECURE:-true}
       FMCP_ALLOW_INSECURE_FORGEJO_HTTP: ${FMCP_ALLOW_INSECURE_FORGEJO_HTTP:-false}
+      FMCP_ALLOW_UNVERIFIED_FORGEJO_TLS: ${FMCP_ALLOW_UNVERIFIED_FORGEJO_TLS:-false}
+      FMCP_TRUSTED_PROXY_CIDRS: ${FMCP_TRUSTED_PROXY_CIDRS:-[]}
+      FMCP_FORGEJO_ALLOWED_BASE_URLS: ${FMCP_FORGEJO_ALLOWED_BASE_URLS:?set FMCP_FORGEJO_ALLOWED_BASE_URLS to a JSON list of trusted Forgejo base URLs}
+      FMCP_MIGRATION_ALLOW_PRIVATE_HOSTS: ${FMCP_MIGRATION_ALLOW_PRIVATE_HOSTS:-false}
+      FMCP_MCP_ALLOWED_ORIGINS: ${FMCP_MCP_ALLOWED_ORIGINS:-[]}
       FMCP_MCP_REQUEST_MAX_BYTES: ${FMCP_MCP_REQUEST_MAX_BYTES:-2097152}
       FMCP_COMMIT_MAX_FILES: ${FMCP_COMMIT_MAX_FILES:-100}
       FMCP_COMMIT_MAX_TOTAL_BYTES: ${FMCP_COMMIT_MAX_TOTAL_BYTES:-10485760}
@@ -37,12 +42,13 @@ services:
         until python -c "import socket; socket.create_connection(('postgres', 5432), 2).close()";
         do sleep 1; done;
         alembic upgrade head &&
-        uvicorn forgejo_mcp.main:app --host 0.0.0.0 --port 8000
+        uvicorn forgejo_mcp.main:app --host 0.0.0.0 --port 8000 --no-proxy-headers
     ports:
       - "${FMCP_HTTP_PORT:-8000}:8000"
     volumes:
       - ${FMCP_ADMIN_PASSWORD_FILE:-./secrets/admin_password}:/run/secrets/admin_password:ro
       - ${FMCP_CREDENTIAL_KEY_FILE:-./secrets/credential_key}:/run/secrets/credential_key:ro
+      - ${FMCP_DATABASE_URL_SECRET_FILE:-./secrets/database_url}:/run/secrets/database_url:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,9 +66,10 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-forgejo_mcp}
       POSTGRES_USER: ${POSTGRES_USER:-forgejo_mcp}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ${FMCP_POSTGRES_PASSWORD_FILE:-./secrets/postgres_password}:/run/secrets/postgres_password:ro
     ports:
       - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
     restart: unless-stopped

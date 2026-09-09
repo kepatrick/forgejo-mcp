@@ -86,6 +86,72 @@ def test_registry_contains_stable_default_disabled_tool_spec() -> None:
 
 
 @pytest.mark.parametrize(
+    "arguments",
+    [
+        {"owner": ".", "repo": "repo"},
+        {"owner": "..", "repo": "repo"},
+        {"owner": " .. ", "repo": "repo"},
+        {"owner": "\u00a0..\u00a0", "repo": "repo"},
+        {"owner": "\u3000.\u3000", "repo": "repo"},
+        {"owner": "owner", "repo": "."},
+        {"owner": "owner", "repo": ".."},
+        {"owner": "owner", "repo": " . "},
+        {"owner": "owner", "repo": "\u00a0..\u00a0"},
+    ],
+)
+def test_repository_tool_schema_rejects_dot_segments(arguments: dict[str, str]) -> None:
+    validator = jsonschema.Draft202012Validator(get_tool("forgejo_get_repository").input_schema)
+
+    assert list(validator.iter_errors(arguments))
+
+
+@pytest.mark.parametrize("sha", [".", "..", " . ", " .. ", "\u00a0..\u00a0", "\u3000.\u3000"])
+def test_ref_tool_schema_rejects_dot_segments(sha: str) -> None:
+    validator = jsonschema.Draft202012Validator(get_tool("forgejo_get_commit").input_schema)
+
+    assert any(
+        list(error.path) == ["sha"]
+        for error in validator.iter_errors({"owner": "owner", "repo": "repo", "sha": sha})
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".",
+        "..",
+        "./README.md",
+        "src/./module.py",
+        "src/../secret",
+        "\u00a0..\u00a0",
+        "\u00a0../README.md",
+        "src/..\u3000",
+        "\u3000/absolute",
+    ],
+)
+def test_file_path_tool_schema_rejects_dot_segments(path: str) -> None:
+    validator = jsonschema.Draft202012Validator(get_tool("forgejo_get_file_content").input_schema)
+
+    assert any(
+        list(error.path) == ["path"]
+        for error in validator.iter_errors({"owner": "owner", "repo": "repo", "path": path})
+    )
+
+
+def test_repository_root_listing_accepts_an_omitted_or_empty_path() -> None:
+    validator = jsonschema.Draft202012Validator(
+        get_tool("forgejo_list_repository_contents").input_schema
+    )
+
+    assert not list(validator.iter_errors({"owner": "owner", "repo": "repo"}))
+    assert not list(validator.iter_errors({"owner": "owner", "repo": "repo", "path": ""}))
+    file_validator = jsonschema.Draft202012Validator(
+        get_tool("forgejo_get_file_content").input_schema
+    )
+    assert list(file_validator.iter_errors({"owner": "owner", "repo": "repo", "path": ""}))
+
+
+@pytest.mark.parametrize(
     ("failed_check", "reason"),
     [
         ("token_valid", "token_invalid"),

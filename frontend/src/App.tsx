@@ -205,6 +205,52 @@ function ChangePassword({ account, onChanged }: { account: Account; onChanged: (
   )
 }
 
+function AccountSecurity({ account, onChanged }: { account: Account; onChanged: (account: Account) => void }) {
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmation, setConfirmation] = useState('')
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setError('')
+    setMessage('')
+    if (newPassword !== confirmation) {
+      setError('New password confirmation does not match')
+      return
+    }
+    setSubmitting(true)
+    try {
+      onChanged(await api<Account>('/api/auth/change-password', jsonRequest('POST', { current_password: currentPassword, new_password: newPassword })))
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmation('')
+      setMessage('Password updated. Other active sessions were revoked.')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to change password')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <section className="panel" id="account-security">
+      <div><p className="eyebrow">Account security</p><h2>Change password</h2></div>
+      <p>Update the password for <strong>{account.username}</strong>. Use at least 12 characters and a password that is not used elsewhere.</p>
+      <form onSubmit={submit} className="form">
+        <Field label="Current password"><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required /></Field>
+        <Field label="New password (12+ characters)"><input type="password" minLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" required /></Field>
+        <Field label="Confirm new password"><input type="password" minLength={12} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" required /></Field>
+        {error && <p className="error" role="alert">{error}</p>}
+        {message && <p className="success" role="status">{message}</p>}
+        <button disabled={submitting}>{submitting ? 'Updating…' : 'Update password'}</button>
+      </form>
+    </section>
+  )
+}
+
 function InvitationPage({ token }: { token: string }) {
   const [context, setContext] = useState<InvitationContext | null>(null)
   const [password, setPassword] = useState('')
@@ -594,10 +640,11 @@ function InvocationAudit({ role }: { role: Account['role'] }) {
   return <section className="panel"><div><p className="eyebrow">Audit</p><h2>Tool invocations</h2></div><p>{role === 'admin' ? 'Review invocation records across all users.' : 'Review calls made with your MCP tokens.'}</p><div className="auditFilters">{role === 'admin' && <Field label="User"><select value={userId} onChange={(event) => setUserId(event.target.value)}><option value="">All users</option>{users.map((user) => <option key={user.id} value={user.id}>{user.display_name} (@{user.username})</option>)}</select></Field>}<Field label="Tool"><select value={toolName} onChange={(event) => setToolName(event.target.value)}><option value="">All tools</option>{tools.map((tool) => <option key={tool.name} value={tool.name}>{tool.title}</option>)}</select></Field><Field label="Status"><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option><option value="succeeded">Succeeded</option><option value="failed">Failed</option><option value="denied">Denied</option><option value="pending">Pending</option></select></Field><Field label="Started on or after"><input type="date" value={startedAfter} max={startedBefore || undefined} onChange={(event) => setStartedAfter(event.target.value)} /></Field><Field label="Started on or before"><input type="date" value={startedBefore} min={startedAfter || undefined} onChange={(event) => setStartedBefore(event.target.value)} /></Field><button className="secondary" onClick={load}>Apply filters</button></div>{error && <p className="error" role="alert">{error}</p>}<p className="auditCount">Showing {records.length} invocation{records.length === 1 ? '' : 's'}{hasMore ? ' · More records exist; use filters to narrow the results.' : ''}</p><div className="userList">{records.map((record) => <article className="auditRow" key={record.id}><div><strong>{record.tool_name}</strong><span>{role === 'admin' ? `${record.user_display_name} · ` : ''}{record.token_name} · {new Date(record.started_at).toLocaleString()}</span><small>{Object.keys(record.target).length ? JSON.stringify(record.target) : 'No resource target'}{record.denial_reason ? ` · ${record.denial_reason}` : ''}{record.error_type ? ` · ${record.error_type}` : ''}</small></div><span className={`badge badge-${record.status}`}>{record.status}</span><span>{record.duration_ms ?? '—'} ms</span></article>)}{records.length === 0 && <p>No invocation records match these filters.</p>}</div></section>
 }
 
-function Dashboard({ account, onLogout }: { account: Account; onLogout: () => void }) {
+function Dashboard({ account, onAccountChanged, onLogout }: { account: Account; onAccountChanged: (account: Account) => void; onLogout: () => void }) {
   const [tokenRevision, setTokenRevision] = useState(0)
   async function logout() { await api<void>('/api/auth/logout', jsonRequest('POST')); onLogout() }
-  return <main className="dashboard"><header className="topbar"><div><span className="brand">Forgejo MCP</span><span className="role">{account.role}</span></div><div className="actions"><span>{account.username}</span><button className="secondary" onClick={logout}>Sign out</button></div></header><div className="content"><section className="hero"><p className="eyebrow">Internal developer platform</p><h1>Dashboard</h1><p className="description">Manage the Forgejo connection, internal identities, credentials, and MCP client access.</p></section>{account.role === 'admin' ? <><ForgejoSettings /><UserManagement /><AdminTools /><AdminMcpTokens /><InvocationAudit role="admin" /></> : <><MyForgejoCredential /><MyMcpTokens onTokensChanged={() => setTokenRevision((current) => current + 1)} /><MyToolPermissions tokenRevision={tokenRevision} /><InvocationAudit role="user" /></>}</div></main>
+  function showAccountSecurity() { document.getElementById('account-security')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
+  return <main className="dashboard"><header className="topbar"><div><span className="brand">Forgejo MCP</span><span className="role">{account.role}</span></div><div className="actions"><span>{account.username}</span><button className="secondary" onClick={showAccountSecurity}>Change password</button><button className="secondary" onClick={logout}>Sign out</button></div></header><div className="content"><section className="hero"><p className="eyebrow">Internal developer platform</p><h1>Dashboard</h1><p className="description">Manage the Forgejo connection, internal identities, credentials, and MCP client access.</p></section><AccountSecurity account={account} onChanged={onAccountChanged} />{account.role === 'admin' ? <><ForgejoSettings /><UserManagement /><AdminTools /><AdminMcpTokens /><InvocationAudit role="admin" /></> : <><MyForgejoCredential /><MyMcpTokens onTokensChanged={() => setTokenRevision((current) => current + 1)} /><MyToolPermissions tokenRevision={tokenRevision} /><InvocationAudit role="user" /></>}</div></main>
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label><span>{label}</span>{children}</label> }
@@ -612,5 +659,5 @@ export function App() {
   if (loading) return <AuthCard eyebrow="Forgejo MCP" title="Loading…"><p className="description">Checking your session.</p></AuthCard>
   if (!account) return <Login onLogin={setAccount} />
   if (account.must_change_password) return <ChangePassword account={account} onChanged={setAccount} />
-  return <Dashboard account={account} onLogout={() => setAccount(null)} />
+  return <Dashboard account={account} onAccountChanged={setAccount} onLogout={() => setAccount(null)} />
 }

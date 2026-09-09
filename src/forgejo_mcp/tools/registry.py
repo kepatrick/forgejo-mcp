@@ -87,8 +87,18 @@ def _page_schema(item_schema: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-_OWNER = {"type": "string", "minLength": 1, "maxLength": 255, "pattern": r"^[^/\x00-\x1f\x7f]+$"}
-_REPO = {"type": "string", "minLength": 1, "maxLength": 255, "pattern": r"^[^/\x00-\x1f\x7f]+$"}
+_OWNER = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 255,
+    "pattern": r"^(?!\s*\.{1,2}\s*$)[^/\x00-\x1f\x7f]+$",
+}
+_REPO = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 255,
+    "pattern": r"^(?!\s*\.{1,2}\s*$)[^/\x00-\x1f\x7f]+$",
+}
 _PAGE = {"type": "integer", "minimum": 1, "maximum": 100000, "default": 1}
 _LIMIT = {"type": "integer", "minimum": 1, "maximum": 100, "default": 30}
 _BRANCH_SCHEMA = _object_schema(
@@ -139,8 +149,25 @@ _COMMIT_DETAIL_SCHEMA = _object_schema(
     },
     [*_COMMIT_REQUIRED, "files", "files_truncated"],
 )
-_REF = {"type": "string", "minLength": 1, "maxLength": 255}
-_FILE_PATH = {"type": "string", "minLength": 1, "maxLength": 1024}
+_REF = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 255,
+    "pattern": r"^(?!\s*\.{1,2}\s*$)[^\x00-\x1f\x7f]+$",
+}
+_FILE_PATH = {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 1024,
+    "pattern": (
+        r"^(?!\s*/)(?!\s*\.{1,2}(?:/|$))(?!\s*\.{1,2}\s*$)"
+        r"(?!.*\/\.{1,2}(?:/|$))(?!.*\/\.{1,2}\s*$)[^\x00-\x1f\x7f]+$"
+    ),
+}
+_OPTIONAL_ROOT_FILE_PATH = {
+    "oneOf": [_FILE_PATH, {"type": "string", "const": ""}],
+    "description": "Omit this field or use an empty string to list the repository root.",
+}
 _NUMBER = {"type": "integer", "minimum": 1}
 _TIMESTAMP = {"type": "string", "format": "date-time"}
 _TITLE = {"type": "string", "minLength": 1, "maxLength": 255}
@@ -729,7 +756,7 @@ _TOOL_SPECS = (
             {
                 "owner": _OWNER,
                 "repo": _REPO,
-                "sha": {"type": "string", "minLength": 1, "maxLength": 64},
+                "sha": {**_REF, "maxLength": 64},
             },
             ["owner", "repo", "sha"],
         ),
@@ -1142,7 +1169,13 @@ _TOOL_SPECS = (
         description="List files and directories at a repository path and ref.",
         risk="read",
         input_schema=_object_schema(
-            {"owner": _OWNER, "repo": _REPO, "path": _FILE_PATH, "ref": _REF}, ["owner", "repo"]
+            {
+                "owner": _OWNER,
+                "repo": _REPO,
+                "path": _OPTIONAL_ROOT_FILE_PATH,
+                "ref": _REF,
+            },
+            ["owner", "repo"],
         ),
         output_schema=_object_schema(
             {

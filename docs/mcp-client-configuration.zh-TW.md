@@ -76,6 +76,8 @@ headers:
 
 Forgejo MCP 不接受 query-string authentication。Token 必須以 Bearer token 放在 `Authorization` request header。
 
+如果 request 帶有 HTTP `Origin` header，該 origin 必須經過標準化後與 deployment 的 `FMCP_MCP_ALLOWED_ORIGINS` JSON 清單中某個值完全相同，否則會被拒絕。Native MCP client 通常不會傳送此 header。只在有意使用瀏覽器 MCP client 時才設定此 allowlist；不支援 wildcard origin。
+
 ## 確認連線
 
 儲存設定後：

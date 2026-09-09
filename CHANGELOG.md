@@ -8,6 +8,12 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Security
+
+- Pin Forgejo destinations, validate remote/path inputs, bound decompression, redact credentials, serialize invitation acceptance and harden browser/proxy boundaries.
+- Move Compose database credentials into protected files; see `docs/security/upgrade-hardening.md` for required configuration changes.
+- Preserve existing token lifecycle and add targeted regression tests. No OAuth migrations are included.
+
 ## [0.1.0] - 2026-09-08
 
 ### Compatibility

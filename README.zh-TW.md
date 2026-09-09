@@ -1,5 +1,7 @@
 # Forgejo MCP
 
+升級既有部署？請先閱讀[安全加固升級指南（英文）](docs/security/upgrade-hardening.md)。
+
 [English](README.md)
 
 維護者發布流程：[版本化 Docker image 與 GitHub Release](docs/releasing.zh-TW.md)。
@@ -53,16 +55,28 @@ v0.1.0 支援的部署方式會把 React Dashboard build 進 App image，並一�
 
 ## 快速啟動
 
+**以下僅適用於全新安裝。** 既有部署請依[升級指南（英文）](docs/security/upgrade-hardening.md)操作，不要重新產生資料庫密碼或 encryption key。
+
 在 repository 根目錄執行：
 
 ```bash
 cp deploy/compose.example.env deploy/.env
-# 繼續前請編輯 deploy/.env 並更換 POSTGRES_PASSWORD。
+```
 
+啟動前先編輯 `deploy/.env`：將 `FMCP_FORGEJO_ALLOWED_BASE_URLS` 改成實際 Forgejo base URL，不要保留 `git.example.com` 範例值。正式 HTTPS 部署使用 `FMCP_COOKIE_SECURE=true`；`false` 僅適用於直接連線 localhost HTTP。下列指令假設 `POSTGRES_USER` 與 `POSTGRES_DB` 維持預設的 `forgejo_mcp`；若有更動，`database_url` 也必須使用相同值。
+
+```bash
+umask 077
 mkdir -p deploy/secrets
 openssl rand -base64 32 > deploy/secrets/admin_password
 openssl rand -base64 32 > deploy/secrets/credential_key
-chmod 600 deploy/secrets/admin_password deploy/secrets/credential_key
+postgres_password="$(openssl rand -hex 32)"
+printf '%s\n' "$postgres_password" > deploy/secrets/postgres_password
+printf 'postgresql+asyncpg://forgejo_mcp:%s@postgres:5432/forgejo_mcp\n' \
+  "$postgres_password" > deploy/secrets/database_url
+unset postgres_password
+chmod 600 deploy/secrets/admin_password deploy/secrets/credential_key \
+  deploy/secrets/postgres_password deploy/secrets/database_url
 
 docker compose --env-file deploy/.env -f deploy/compose.yaml up --build -d
 ```
@@ -80,6 +94,8 @@ curl http://127.0.0.1:8000/health/ready
 - 密碼：`deploy/secrets/admin_password` 內的值
 
 登入後應立刻更換 bootstrap password。直接使用 localhost HTTP 時需要設定 `FMCP_COOKIE_SECURE=false`；前方有 HTTPS 時則應維持 secure cookie。
+
+Production 啟動時也必須設定 `FMCP_FORGEJO_ALLOWED_BASE_URLS`，其值為包含可信 Forgejo base URL 的 JSON 清單（例如 `["https://git.example.com"]`）。這個由部署管理的固定值可防止 Dashboard 管理員把使用者 PAT 驗證導向其他伺服器。以瀏覽器連接 MCP 時，還必須把精確的 origin 加入 `FMCP_MCP_ALLOWED_ORIGINS`；一般 MCP client 不會傳送 `Origin` header。
 
 Logs、停止服務、清除資料、常見啟動錯誤，以及選用的本地 Forgejo profile，請參閱[快速入門](docs/getting-started.zh-TW.md)。
 

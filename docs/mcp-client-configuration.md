@@ -76,6 +76,8 @@ This YAML is a field map, not a file that can be copied into every client. Follo
 
 Forgejo MCP rejects query-string authentication. The token must be sent as a Bearer token in the `Authorization` request header.
 
+Requests carrying an HTTP `Origin` header are rejected unless that exact normalized origin is present in the deployment's `FMCP_MCP_ALLOWED_ORIGINS` JSON list. Native MCP clients normally omit this header. Configure the allowlist only for an intentional browser-based client; wildcard origins are not supported.
+
 ## Confirm the connection
 
 After saving the configuration:

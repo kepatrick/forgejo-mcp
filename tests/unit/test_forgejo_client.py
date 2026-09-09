@@ -1,10 +1,83 @@
+import gzip
 import json
+import tracemalloc
+import zlib
+from collections.abc import Callable
 
 import httpx
 import pytest
 
 from forgejo_mcp.application.errors import ExternalServiceUnavailable, NotFound, ValidationFailed
+from forgejo_mcp.forgejo import client as client_module
 from forgejo_mcp.forgejo.client import ForgejoClient, normalize_base_url
+
+
+@pytest.mark.parametrize("status,method", [(204, "DELETE"), (304, "GET"), (200, "HEAD")])
+async def test_bodyless_response_ignores_compression_metadata(status, method) -> None:
+    response = httpx.Response(
+        status,
+        headers={"Content-Encoding": "gzip"},
+        stream=httpx.ByteStream(b""),
+        request=httpx.Request(method, "https://example.test"),
+    )
+    result = await client_module._bounded_response(response)
+    assert result.status_code == status
+    assert result.content == b""
+    assert "Content-Encoding" not in result.headers
+    assert not response.is_stream_consumed
+    await response.aclose()
+
+
+@pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+async def test_decompression_memory_is_bounded(monkeypatch, encoding) -> None:
+    limit = 1024 * 1024
+    monkeypatch.setattr(client_module, "MAX_FORGEJO_RESPONSE_BYTES", limit)
+    encode = gzip.compress if encoding == "gzip" else zlib.compress
+    payload = encode(bytes(16 * limit))
+    response = httpx.Response(
+        200,
+        headers={"Content-Encoding": encoding},
+        stream=httpx.ByteStream(payload),
+        request=httpx.Request("GET", "https://example.test"),
+    )
+    tracemalloc.start()
+    try:
+        with pytest.raises(ExternalServiceUnavailable, match="too large"):
+            await client_module._bounded_response(response)
+        _, peak = tracemalloc.get_traced_memory()
+        assert peak < 5 * limit
+    finally:
+        tracemalloc.stop()
+        await response.aclose()
+
+
+@pytest.mark.parametrize("encoding", ["gzip,gzip,gzip", "br", "zstd"])
+async def test_reject_unsupported_encoding_before_reading(encoding) -> None:
+    response = httpx.Response(
+        200,
+        headers={"Content-Encoding": encoding},
+        stream=httpx.ByteStream(b"not read"),
+        request=httpx.Request("GET", "https://example.test"),
+    )
+    with pytest.raises(ExternalServiceUnavailable, match="Unsupported"):
+        await client_module._bounded_response(response)
+    assert not response.is_stream_consumed
+    await response.aclose()
+
+
+@pytest.mark.parametrize(
+    "payload", [gzip.compress(b"ok")[:-1], b"bad", gzip.compress(b"ok") + b"junk"]
+)
+async def test_reject_invalid_compression(payload) -> None:
+    response = httpx.Response(
+        200,
+        headers={"Content-Encoding": "gzip"},
+        stream=httpx.ByteStream(payload),
+        request=httpx.Request("GET", "https://example.test"),
+    )
+    with pytest.raises(ExternalServiceUnavailable, match="compression"):
+        await client_module._bounded_response(response)
+    await response.aclose()
 
 
 def test_normalize_base_url() -> None:
@@ -41,6 +114,106 @@ async def test_get_version() -> None:
     result = await client.get_version(base_url="https://git.example.test", verify_tls=True)
 
     assert result.version == "16.0.1+gitea-1.22"
+
+
+@pytest.mark.parametrize(
+    ("content_encoding", "encode"),
+    [
+        ("gzip", gzip.compress),
+        ("deflate", zlib.compress),
+    ],
+)
+async def test_get_version_decodes_compressed_response_once(
+    content_encoding: str,
+    encode: Callable[[bytes], bytes],
+) -> None:
+    payload = encode(b'{"version":"16.0.3"}')
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            headers={
+                "Content-Encoding": content_encoding,
+                "Content-Length": str(len(payload)),
+                "Content-Type": "application/json",
+            },
+            stream=httpx.ByteStream(payload),
+        )
+
+    client = ForgejoClient(
+        connect_timeout_seconds=2,
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await client.get_version(base_url="https://git.example.test", verify_tls=True)
+
+    assert result.version == "16.0.3"
+
+
+async def test_get_version_from_private_instance_login_page() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        assert "Authorization" not in request.headers
+        if request.url.path == "/api/v1/version":
+            assert request.headers["Accept"] == "application/json"
+            return httpx.Response(
+                403,
+                json={"message": "Only signed in user is allowed to call APIs."},
+            )
+        assert request.url.path == "/user/login"
+        assert request.headers["Accept"] == "text/html"
+        return httpx.Response(
+            200,
+            text="assetVersionEncoded: encodeURIComponent('16.0.3~gitea-1.22.0')",
+        )
+
+    client = ForgejoClient(
+        connect_timeout_seconds=2,
+        transport=httpx.MockTransport(handler),
+    )
+
+    result = await client.get_version(base_url="https://git.example.test", verify_tls=True)
+
+    assert result.version == "16.0.3+gitea-1.22.0"
+    assert [request.url.path for request in requests] == [
+        "/api/v1/version",
+        "/user/login",
+    ]
+
+
+async def test_private_version_rejects_unexpected_denial() -> None:
+    client = ForgejoClient(
+        connect_timeout_seconds=2,
+        transport=httpx.MockTransport(
+            lambda _request: httpx.Response(403, json={"message": "forbidden"})
+        ),
+    )
+
+    with pytest.raises(ExternalServiceUnavailable, match="unexpected"):
+        await client.get_version(base_url="https://git.example.test", verify_tls=True)
+
+
+async def test_private_version_rejects_invalid_login_marker() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/v1/version":
+            return httpx.Response(
+                403,
+                json={"message": "Only signed in user is allowed to call APIs."},
+            )
+        return httpx.Response(
+            200,
+            text="assetVersionEncoded: encodeURIComponent('not-a-version')",
+        )
+
+    client = ForgejoClient(
+        connect_timeout_seconds=2,
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(ExternalServiceUnavailable, match="version"):
+        await client.get_version(base_url="https://git.example.test", verify_tls=True)
 
 
 async def test_reject_redirect() -> None:
@@ -329,6 +502,51 @@ async def test_repository_migration_and_update_validate_sensitive_options() -> N
         )
 
 
+@pytest.mark.parametrize(
+    "clone_addr",
+    [
+        "file:///etc/passwd",
+        "https://localhost/repo.git",
+        "http://127.0.0.1/repo.git",
+        "http://[::1]/repo.git",
+        "https://git.example.test/repo.git?access_token=secret",
+        "git@example.test:owner/repo.git",
+    ],
+)
+async def test_repository_migration_rejects_unsafe_remote_addresses(clone_addr: str) -> None:
+    client = ForgejoClient(
+        connect_timeout_seconds=2,
+        transport=httpx.MockTransport(lambda _request: httpx.Response(500)),
+    )
+    with pytest.raises(ValidationFailed):
+        await client.migrate_repository(
+            base_url="https://git.example.test",
+            token="pat",
+            verify_tls=True,
+            clone_addr=clone_addr,
+            repo_name="repo",
+        )
+
+
+async def test_repository_migration_private_host_requires_explicit_opt_in() -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(201, json=repository_payload())
+
+    client = ForgejoClient(
+        connect_timeout_seconds=2,
+        migration_allow_private_hosts=True,
+        transport=httpx.MockTransport(handler),
+    )
+    result = await client.migrate_repository(
+        base_url="https://git.example.test",
+        token="pat",
+        verify_tls=True,
+        clone_addr="http://forgejo:3000/owner/repo.git",
+        repo_name="repo",
+    )
+    assert result.id == 7
+
+
 def commit_payload(sha: str = "abc123") -> dict[str, object]:
     return {
         "sha": sha,
@@ -425,6 +643,32 @@ async def test_repository_requests_reject_invalid_inputs_and_not_found() -> None
             owner="bad/owner",
             repo="repo",
         )
+    for owner, repo in (
+        (".", "repo"),
+        ("..", "repo"),
+        ("\u00a0..\u00a0", "repo"),
+        ("patrick", "."),
+        ("patrick", ".."),
+        ("patrick", "\u3000.\u3000"),
+    ):
+        with pytest.raises(ValidationFailed):
+            await client.get_repository(
+                base_url="https://git.example.test",
+                token="pat",
+                verify_tls=True,
+                owner=owner,
+                repo=repo,
+            )
+    for sha in (".", "..", "\u00a0..\u00a0", "\u3000.\u3000"):
+        with pytest.raises(ValidationFailed, match="commit SHA"):
+            await client.get_commit(
+                base_url="https://git.example.test",
+                token="pat",
+                verify_tls=True,
+                owner="patrick",
+                repo="repo",
+                sha=sha,
+            )
     with pytest.raises(ValidationFailed, match="limit"):
         await client.list_repositories(
             base_url="https://git.example.test",
@@ -434,18 +678,26 @@ async def test_repository_requests_reject_invalid_inputs_and_not_found() -> None
             limit=101,
             order_by="name",
         )
-    with pytest.raises(ValidationFailed, match="path"):
-        await client.list_commits(
-            base_url="https://git.example.test",
-            token="pat",
-            verify_tls=True,
-            owner="patrick",
-            repo="repo",
-            ref=None,
-            path="../secret",
-            page=1,
-            limit=30,
-        )
+    for invalid_path in (
+        "../secret",
+        "./README.md",
+        "src/./module.py",
+        "\u00a0..\u00a0",
+        "\u00a0../secret",
+        "src/..\u3000",
+    ):
+        with pytest.raises(ValidationFailed, match="path"):
+            await client.list_commits(
+                base_url="https://git.example.test",
+                token="pat",
+                verify_tls=True,
+                owner="patrick",
+                repo="repo",
+                ref=None,
+                path=invalid_path,
+                page=1,
+                limit=30,
+            )
     with pytest.raises(NotFound, match="repository"):
         await client.get_repository(
             base_url="https://git.example.test",

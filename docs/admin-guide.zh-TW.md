@@ -55,7 +55,7 @@ MCP client 可以使用該工具
 
 只有明確啟用的本地測試 profile 才允許 HTTP。
 
-v0.1.0 已依 Forgejo `16.0.2+gitea-1.22.0` contract 測試。連接其他版本前請先閱讀[已知限制](known-limitations.zh-TW.md)。
+v0.1.0 已依 Forgejo `16.0.2+gitea-1.22.0` 與 `16.0.3+gitea-1.22.0` contract 測試。連接其他版本前請先閱讀[已知限制](known-limitations.zh-TW.md)。
 
 ## 3. 設定全域工具
 

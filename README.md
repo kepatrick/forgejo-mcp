@@ -1,7 +1,5 @@
 # Forgejo MCP
 
-Minimum supported Forgejo version: **16.0.3**. CI retains 16.0.2 solely as a comparative baseline.
-
 Upgrading an existing installation? Read [security upgrade instructions](docs/security/upgrade-hardening.md).
 
 [繁體中文](README.zh-TW.md)

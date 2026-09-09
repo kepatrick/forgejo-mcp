@@ -2,9 +2,9 @@
 
 [繁體中文版](getting-started.zh-TW.md)
 
-This guide starts the v0.1.0 Docker Compose deployment from a source checkout. It runs the Forgejo MCP App, built-in Dashboard and PostgreSQL. An existing Forgejo instance is required for normal use.
+This guide starts the current Docker Compose deployment from a source checkout. It runs the Forgejo MCP App, built-in Dashboard and PostgreSQL. An existing Forgejo instance is required for normal use.
 
-> v0.1.0 is an early self-hosted open-source release and is not yet fully production-ready. Read the [known limitations](known-limitations.md) before production use or exposure outside a protected environment.
+> The current source deployment is an early self-hosted release and is not yet fully production-ready. Read the [version compatibility matrix](compatibility.md) and [known limitations](known-limitations.md) before production use or exposure outside a protected environment.
 
 ## 1. Prerequisites
 
@@ -15,14 +15,14 @@ Install:
 - OpenSSL;
 - a shell capable of running the commands below.
 
-You also need an existing Forgejo instance compatible with the locked Forgejo 16.0.2 or 16.0.3 API contract. The App container must be able to reach its HTTPS API URL.
+You also need an existing Forgejo 16.0.3 instance compatible with the locked API contract. Forgejo 16.0.2 is a comparison baseline, not a supported deployment target for the current source. The App container must be able to reach the Forgejo HTTPS API URL.
 
 Run every command in this guide from the repository root.
 
 ## 2. Create the deployment configuration
 
 These steps are for a **new installation only**. For an existing installation,
-follow the [upgrade guide](security/upgrade-hardening.md) instead; do not overwrite
+follow the [security hardening upgrade guide](security/upgrade-hardening.md) instead; do not overwrite
 its configuration or regenerate its secrets.
 
 Copy the example environment file:

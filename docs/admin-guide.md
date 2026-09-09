@@ -57,7 +57,7 @@ For normal deployments:
 
 HTTP is supported only for the local test profile when explicitly enabled.
 
-v0.1.0 is contract-tested against Forgejo `16.0.2+gitea-1.22.0` and `16.0.3+gitea-1.22.0`. See [Known limitations](known-limitations.md) before connecting another version.
+The current source supports Forgejo `16.0.3+gitea-1.22.0`. Forgejo 16.0.2 remains a comparison baseline only. See the [version compatibility matrix](compatibility.md) before connecting another version.
 
 ## 3. Configure global tools
 
@@ -143,6 +143,6 @@ Disabling a user revokes active local sessions and prevents their MCP tokens fro
 
 Logs are JSON by default and include request, user and invocation correlation fields. They must not be treated as a secret store.
 
-## v0.1.0 deployment status
+## Deployment status
 
-v0.1.0 is a self-hosted open-source release whose production deployment capabilities are not yet complete. Operators remain responsible for TLS termination and infrastructure operations; backup/restore automation and production incident runbooks are not included. Review [Known limitations](known-limitations.md) before production use.
+Forgejo MCP is a self-hosted open-source release whose production deployment capabilities are not yet complete. Operators remain responsible for TLS termination and infrastructure operations; backup/restore automation and production incident runbooks are not included. Review [Known limitations](known-limitations.md) before production use.

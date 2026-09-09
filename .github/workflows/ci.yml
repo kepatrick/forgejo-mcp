@@ -2,6 +2,12 @@ name: CI
 
 on:
   workflow_call:
+    inputs:
+      checkout_ref:
+        description: Commit to test; defaults to the triggering commit
+        required: false
+        type: string
+        default: ''
   push:
     branches:
       - main
@@ -34,6 +40,8 @@ jobs:
       FMCP_TEST_DATABASE_URL: postgresql+asyncpg://forgejo_mcp:integration-test-password@127.0.0.1:5432/forgejo_mcp_test
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
@@ -49,6 +57,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.checkout_ref || github.sha }}
       - uses: actions/setup-node@v5
         with:
           node-version: "22"

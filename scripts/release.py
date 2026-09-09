@@ -48,6 +48,19 @@ def validate_metadata(root: Path, version: str) -> str:
     packages = [p for p in lock["package"] if p["name"] == project["name"]]
     if len(packages) != 1 or packages[0]["version"] != version:
         raise ReleaseError("uv.lock project version differs; run uv lock and commit the result")
+    for name in ("package.json", "package-lock.json"):
+        payload = json.loads((root / "frontend" / name).read_text(encoding="utf-8"))
+        if payload.get("version") != version:
+            raise ReleaseError(f"frontend/{name} version differs from pyproject.toml")
+        if (
+            name == "package-lock.json"
+            and payload.get("packages", {}).get("", {}).get("version") != version
+        ):
+            raise ReleaseError("frontend lockfile root package version is inconsistent")
+    image_text = (root / "deploy/compose.image.yaml").read_text(encoding="utf-8")
+    image_versions = re.findall(r"image: \$\{FMCP_IMAGE:-ghcr\.io/[^\s}]+:([^}\s]+)\}", image_text)
+    if image_versions != [version]:
+        raise ReleaseError("Compose default image version differs from pyproject.toml")
     english = release_notes((root / "CHANGELOG.md").read_text(encoding="utf-8"), version)
     chinese_path = root / "CHANGELOG.zh-TW.md"
     if not chinese_path.is_file():

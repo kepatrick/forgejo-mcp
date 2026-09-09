@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Prepared MCP version on main, e.g. 0.1.1 (not a Forgejo version)'
+        description: 'Stable MCP SemVer to release (not a Forgejo version)'
         required: true
         type: string
   push:
@@ -19,10 +19,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  validate:
+  prepare:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
-      tag: ${{ steps.release.outputs.tag }}
+      tag: ${{ steps.prepare.outputs.tag }}
+      release_sha: ${{ steps.prepare.outputs.release_sha }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -31,34 +34,119 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Require a main-branch commit and matching release metadata
-        id: release
+      - name: Prepare and push the manual release commit
+        id: prepare
         env:
           REQUESTED_VERSION: ${{ inputs.version }}
           EVENT_NAME: ${{ github.event_name }}
           EVENT_REF: ${{ github.ref }}
           TAG_NAME: ${{ github.ref_name }}
+        shell: bash
         run: |
-          if [ "$EVENT_NAME" = workflow_dispatch ]; then
-            if [ "$EVENT_REF" != refs/heads/main ]; then
-              echo 'Manual releases must run from main.' >&2
+          set -euo pipefail
+          if [ "$EVENT_NAME" != workflow_dispatch ]; then
+            echo "tag=$TAG_NAME" >> "$GITHUB_OUTPUT"
+            echo "release_sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$EVENT_REF" != refs/heads/main ]; then
+            echo 'Manual releases must run from main.' >&2
+            exit 1
+          fi
+          RELEASE_VERSION="${REQUESTED_VERSION#v}"
+          if [[ ! "$RELEASE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo 'Enter a stable MCP SemVer such as 0.2.0.' >&2
+            exit 1
+          fi
+          RELEASE_TAG="v$RELEASE_VERSION"
+
+          git fetch origin main
+          START_SHA=$(git rev-parse HEAD)
+          MAIN_SHA=$(git rev-parse origin/main)
+          if [ "$START_SHA" != "$MAIN_SHA" ]; then
+            # A rerun starts from the original dispatch SHA. Reuse only the exact
+            # release commit this workflow previously created as its direct child.
+            GENERATED_SHA=$(git rev-list --ancestry-path --reverse "$START_SHA..origin/main" | sed -n '1p')
+            if [ -z "$GENERATED_SHA" ] \
+              || [ "$(git rev-parse "$GENERATED_SHA^")" != "$START_SHA" ] \
+              || [ "$(git log -1 --format=%s "$GENERATED_SHA")" != "chore(release): prepare $RELEASE_TAG" ]; then
+              echo 'The workflow must start from current main or its own generated release commit.' >&2
               exit 1
             fi
-            RELEASE_TAG="v${REQUESTED_VERSION#v}"
-          else
-            RELEASE_TAG="$TAG_NAME"
+            git checkout --detach "$GENERATED_SHA"
           fi
+
+          REMOTE_TAG=$(git ls-remote origin "refs/tags/$RELEASE_TAG")
+          if [ -n "$REMOTE_TAG" ]; then
+            git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            if [ "$(git rev-parse "$RELEASE_TAG^{commit}")" != "$(git rev-parse HEAD)" ]; then
+              echo 'Tag already points to a different commit; refusing to prepare this version.' >&2
+              exit 1
+            fi
+          fi
+          python scripts/release.py "$RELEASE_VERSION" --prepare --apply
+
+          if ! git diff --quiet; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add -- \
+              pyproject.toml uv.lock \
+              frontend/package.json frontend/package-lock.json \
+              deploy/compose.image.yaml CHANGELOG.md CHANGELOG.zh-TW.md
+            git commit -m "chore(release): prepare $RELEASE_TAG"
+            if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+              echo 'Release preparation changed an unexpected file; refusing to push.' >&2
+              exit 1
+            fi
+            # A concurrent main update or branch-protection rejection fails safely here.
+            git push origin HEAD:refs/heads/main
+          fi
+
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  validate:
+    needs: prepare
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+      release_sha: ${{ steps.release.outputs.release_sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.prepare.outputs.release_sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Require a main-branch commit and matching release metadata
+        id: release
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_SHA: ${{ needs.prepare.outputs.release_sha }}
+        run: |
+          set -euo pipefail
           git fetch origin main
-          git merge-base --is-ancestor HEAD origin/main
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
           python scripts/release.py "$RELEASE_TAG" --check
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "release_sha=$RELEASE_SHA" >> "$GITHUB_OUTPUT"
 
   test:
     needs: validate
     uses: ./.github/workflows/ci.yml
+    with:
+      checkout_ref: ${{ needs.validate.outputs.release_sha }}
+
+  forgejo-compatibility:
+    needs: validate
+    uses: ./.github/workflows/forgejo-e2e.yml
+    with:
+      checkout_ref: ${{ needs.validate.outputs.release_sha }}
 
   publish:
-    needs: [validate, test]
+    needs: [validate, test, forgejo-compatibility]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -66,10 +154,11 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ needs.validate.outputs.tag }}
+      RELEASE_SHA: ${{ needs.validate.outputs.release_sha }}
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ needs.validate.outputs.release_sha }}
           fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
@@ -87,18 +176,18 @@ jobs:
           REMOTE_TAG=$(git ls-remote origin "refs/tags/$RELEASE_TAG")
           if [ -n "$REMOTE_TAG" ]; then
             git fetch origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-            if [ "$(git rev-parse "$RELEASE_TAG^{commit}")" != "$GITHUB_SHA" ]; then
+            if [ "$(git rev-parse "$RELEASE_TAG^{commit}")" != "$RELEASE_SHA" ]; then
               echo 'Tag already points to a different commit; refusing to move it.' >&2
               exit 1
             fi
           else
             git config user.name 'github-actions[bot]'
             git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git tag -a "$RELEASE_TAG" "$GITHUB_SHA" -m "Release $RELEASE_TAG"
+            git tag -a "$RELEASE_TAG" "$RELEASE_SHA" -m "Release $RELEASE_TAG"
             git push origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           fi
-      # GITHUB_TOKEN tag pushes do not start another workflow. This run performs
-      # testing and publication itself, using the same pinned commit throughout.
+      # GITHUB_TOKEN pushes do not start another workflow. This run performs
+      # preparation, testing and publication using the generated commit SHA.
       # Reserve the release before pushing an image. A draft intentionally remains
       # on failure: reruns fail closed rather than silently replacing an image tag.
       - name: Reserve a new release (never overwrite an existing release)
@@ -129,7 +218,7 @@ jobs:
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.metadata.outputs.version }}
-            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.revision=${{ needs.validate.outputs.release_sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: mode=min

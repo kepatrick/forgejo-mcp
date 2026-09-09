@@ -2,9 +2,9 @@
 
 [English](getting-started.md)
 
-本指南說明如何從 source checkout 啟動 v0.1.0 Docker Compose deployment。這套 deployment 會執行 Forgejo MCP App、內建 Dashboard 與 PostgreSQL；一般使用情境需要既有的 Forgejo instance。
+本指南說明如何從 source checkout 啟動目前的 Docker Compose deployment。這套 deployment 會執行 Forgejo MCP App、內建 Dashboard 與 PostgreSQL；一般使用情境需要既有的 Forgejo instance。
 
-> v0.1.0 是早期的 self-hosted 開源版本，尚未完整達到 production-ready。正式使用或暴露至受保護網路以外的環境前，請先閱讀[已知限制](known-limitations.zh-TW.md)。
+> 目前的 source deployment 是早期的 self-hosted 開源版本，尚未完整達到 production-ready。正式使用或暴露至受保護網路以外的環境前，請先閱讀[版本相容性矩陣](compatibility.zh-TW.md)與[已知限制](known-limitations.zh-TW.md)。
 
 ## 1. 系統需求
 
@@ -15,13 +15,13 @@
 - OpenSSL；
 - 可以執行下列 command 的 shell。
 
-你也需要符合已鎖定 Forgejo 16.0.2 或 16.0.3 API contract 的既有 Forgejo instance，而且 App container 必須能連到其 HTTPS API URL。
+你也需要符合已鎖定 API contract 的 Forgejo 16.0.3 instance。Forgejo 16.0.2 是 comparison baseline，不是目前 source 正式支援的部署目標；App container 必須能連到 Forgejo HTTPS API URL。
 
 本指南的所有 command 都應在 repository 根目錄執行。
 
 ## 2. 建立部署設定
 
-以下僅適用於**全新安裝**。既有部署請改依[升級指南（英文）](security/upgrade-hardening.md)
+以下僅適用於**全新安裝**。既有部署請改依[安全加固升級指南](security/upgrade-hardening.zh-TW.md)
 操作，不要覆寫原有設定或重新產生 secrets。
 
 複製環境變數範例：
@@ -118,7 +118,7 @@ Bootstrap username 預設為 `admin`；若已在 `deploy/.env` 修改 `FMCP_BOOT
 3. 全域啟用需要的工具；
 4. 建立並邀請使用者。
 
-請使用不包含 credential、query string 或 fragment 的 HTTPS base URL。App 會透過 `/api/v1/version` 驗證 Forgejo。後續請參閱[管理員指南](admin-guide.zh-TW.md)。
+請使用不包含 credential、query string 或 fragment 的 HTTPS base URL。App 會透過 `/api/v1/version` 驗證 Forgejo。若 Forgejo 只允許登入使用者查詢 API，App 會使用有大小限制的 same-origin login-page fallback 取得版本，且不會傳送 PAT。後續請參閱[管理員指南](admin-guide.zh-TW.md)。
 
 啟動 production deployment 前，請在 `deploy/.env` 將 `FMCP_FORGEJO_ALLOWED_BASE_URLS` 設為包含此精確 URL 的 JSON 清單。這是由部署管理的安全邊界，不是用於自動探測的清單。
 

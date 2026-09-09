@@ -6,6 +6,38 @@
 
 ## [Unreleased]
 
+### 相容性
+
+- 將最低且唯一正式支援的部署目標提高至 Forgejo `16.0.3+gitea-1.22.0`；Forgejo 16.0.2 僅保留為 CI comparison baseline，不受此 release 正式支援。
+- 鎖定官方 16.0.3 Swagger checksum。相較 16.0.2，唯一 schema 差異是未使用的 `IssueMeta` required fields，對已註冊 endpoints 沒有影響。
+- 新增有版本紀錄的相容性矩陣 `docs/compatibility.zh-TW.md`，以及詳細的 Forgejo 16.0.3 相容性報告 `docs/forgejo-16.0.3-compatibility.md`。
+
+### 新增
+
+- 在 pull request 與 release CI 執行 OpenAPI comparison，並針對 Forgejo 16.0.3 及保留的 16.0.2 baseline 執行完整 Docker E2E。
+- 新增 repository search 與 repository webhook create/list 的 E2E coverage。
+- 新增 Dashboard 密碼變更功能；變更後保留目前 session，並撤銷該帳號的其他 active sessions。
+- 支援必須登入才能查詢 API version 的 Forgejo instance，透過有大小限制的 same-origin fallback 取得版本，且不傳送 PAT。
+
+### 變更
+
+- 將預設開發用 Forgejo image 從 `16.0.2-rootless` 改為 `16.0.3-rootless`。
+- 將 E2E 的廣泛 Forgejo PAT 權限改為明確的 `read:user`、`write:organization`、`write:repository` 與 `write:issue` scopes。
+- 在 integration 與 Docker E2E 明確指定 MCP `2025-06-18` negotiation。
+
+### 安全性
+
+- 固定 Forgejo destinations、驗證 remote/path inputs、限制 decompression 大小、遮罩 credentials、序列化 invitation acceptance，並加固 browser/proxy boundaries。
+- 將 Compose database credentials 移至受保護檔案，並要求明確設定可信 Forgejo destinations；請閱讀 `docs/security/upgrade-hardening.zh-TW.md`。
+- 保留既有 token lifecycle 並加入針對性 regression tests；不包含 OAuth routes 或 migrations。
+- 將 `nanoid` 更新至 3.3.18、`cryptography` 更新至 50.0.1，並將 development test stack 更新至已修補的 pytest 9 系列；目前 npm 與 Python dependency audits 均未發現已知漏洞。
+
+### 部署與升級注意事項
+
+- 既有安裝必須依 `docs/security/upgrade-hardening.zh-TW.md` 升級；不要重新產生 PostgreSQL 密碼或 credential encryption key。
+- 本版需要新的 database credential files 與可信 Forgejo URL 設定，但沒有 database migration。
+- 升級前請備份 PostgreSQL、Compose 設定與 credential encryption secrets。Rollback 時需要使用相符的 image 與設定；不要刪除或重新建立 database data。
+
 ## [0.1.0] - 2026-09-08
 
 ### 相容性

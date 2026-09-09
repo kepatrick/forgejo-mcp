@@ -106,6 +106,29 @@ def test_version_mismatch_rejected(repo: Path, release: ModuleType, file: str) -
     assert release.main(["0.1.0", "--check"]) == 1
 
 
+@pytest.mark.parametrize("name", ["package.json", "package-lock.json"])
+def test_frontend_version_mismatch_rejected(repo: Path, release: ModuleType, name: str) -> None:
+    path = repo / "frontend" / name
+    payload = json.loads(path.read_text())
+    payload["version"] = "0.2.0"
+    path.write_text(json.dumps(payload))
+    assert release.main(["0.1.0", "--check"]) == 1
+
+
+def test_frontend_lockfile_root_version_mismatch_rejected(repo: Path, release: ModuleType) -> None:
+    path = repo / "frontend/package-lock.json"
+    payload = json.loads(path.read_text())
+    payload["packages"][""]["version"] = "0.2.0"
+    path.write_text(json.dumps(payload))
+    assert release.main(["0.1.0", "--check"]) == 1
+
+
+def test_compose_image_version_mismatch_rejected(repo: Path, release: ModuleType) -> None:
+    path = repo / "deploy/compose.image.yaml"
+    path.write_text(path.read_text().replace(":0.1.0}", ":0.2.0}"))
+    assert release.main(["0.1.0", "--check"]) == 1
+
+
 @pytest.mark.parametrize("notes", ["## [Unreleased]\n- Something.\n", "## [0.1.0] - 2026-01-01\n"])
 def test_missing_release_notes_rejected(repo: Path, release: ModuleType, notes: str) -> None:
     (repo / "CHANGELOG.md").write_text(notes)

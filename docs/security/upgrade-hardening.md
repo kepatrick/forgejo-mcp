@@ -1,5 +1,7 @@
 # Security hardening upgrade
 
+[繁體中文](upgrade-hardening.zh-TW.md)
+
 This change is independent of Forgejo version validation and OAuth support. It
 adds no OAuth routes, token tables, migrations, PAT scopes or MCP tools.
 

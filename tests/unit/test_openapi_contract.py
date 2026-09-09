@@ -9,7 +9,7 @@ def test_forgejo_v16_contract_covers_every_registered_tool() -> None:
         Path("tests/contracts/forgejo-v16-openapi.json").read_text(encoding="utf-8")
     )
 
-    assert contract["supported_versions"] == {
+    assert contract["verified_versions"] == {
         "16.0.2+gitea-1.22.0": {
             "image": "data.forgejo.org/forgejo/forgejo:16.0.2-rootless",
             "swagger_sha256": "9e94799decc739c31fa68d8dc1b2d7f392e810a088f10b032c9962665398612b",

@@ -42,9 +42,11 @@ MCP client 可以使用該工具
 3. 立刻變更密碼；
 4. 確保 secret file 不會進入 source control。
 
+完成 bootstrap 後，任何已登入帳號都可以使用 Dashboard header 的 **Change password** 按鈕變更密碼。新密碼至少需要 12 個字元；變更成功後會保留目前 session，並撤銷該帳號的其他 active sessions。
+
 ## 2. 設定 Forgejo instance
 
-在 Dashboard 輸入公司的 Forgejo base URL。Forgejo MCP 會 normalize URL，並驗證 `/api/v1/version` 後才儲存。
+在 Dashboard 輸入公司的 Forgejo base URL。Forgejo MCP 會 normalize URL，並驗證 `/api/v1/version` 後才儲存。若 Forgejo 設定為只有登入使用者可呼叫 API，App 只接受 Forgejo 精確的 signed-in-only response，再從 same-origin login page 取得版本，過程不會傳送 PAT；redirect 維持停用，response 大小也有限制。
 
 一般部署應遵守：
 
@@ -55,7 +57,7 @@ MCP client 可以使用該工具
 
 只有明確啟用的本地測試 profile 才允許 HTTP。
 
-v0.1.0 已依 Forgejo `16.0.2+gitea-1.22.0` 與 `16.0.3+gitea-1.22.0` contract 測試。連接其他版本前請先閱讀[已知限制](known-limitations.zh-TW.md)。
+目前 source 正式支援 Forgejo `16.0.3+gitea-1.22.0`；Forgejo 16.0.2 只保留為 comparison baseline。連接其他版本前請先閱讀[版本相容性矩陣](compatibility.zh-TW.md)。
 
 ## 3. 設定全域工具
 
@@ -141,6 +143,6 @@ Forgejo MCP audit records 用來補充 Forgejo repository history 與 Forgejo �
 
 Logs 預設為 JSON，並包含 request、user 與 invocation correlation fields。Logs 不可當成 secret storage。
 
-## v0.1.0 部署狀態
+## 部署狀態
 
-v0.1.0 是 self-hosted 開源版本，production deployment 能力尚未完整。Operator 需自行負責 TLS termination 與 infrastructure operations；目前未包含 backup/restore automation 與 production incident runbooks。正式使用前請閱讀[已知限制](known-limitations.zh-TW.md)。
+Forgejo MCP 是 self-hosted 開源版本，production deployment 能力尚未完整。Operator 需自行負責 TLS termination 與 infrastructure operations；目前未包含 backup/restore automation 與 production incident runbooks。正式使用前請閱讀[已知限制](known-limitations.zh-TW.md)。

@@ -2,242 +2,147 @@
 
 [English](releasing.md)
 
-本流程發布的是 **Forgejo MCP 自己的版本**，不是 Forgejo 的版本。
-同一個 MCP image 可以支援多個已驗證的 Forgejo 版本；請在每次 release notes
-列出實際測試過的版本，不要把未測試的相容性視為保證。
+本流程發布的是 **Forgejo MCP 自己的版本**，不是 Forgejo 的版本。Forgejo 相容性另外記錄於[版本相容性矩陣](compatibility.zh-TW.md)及每個 release 的 changelog。
 
-## 快速操作：選版號，再手動發布
+## 建議流程：從 GitHub 頁面發布
 
-同一支 `scripts/release.py` 現在支援版本準備與正式發布。準備階段不會建立
-commit／tag 或 push；發布階段只發布已審查並合併到 `main` 的版本內容。
-
-### A. 本機準備下一版
-
-先提交已審查的變更，並在中英文 `[Unreleased]` 寫好實際變更說明。
-腳本不會替你杜撰或翻譯 release notes。接著在 repository 根目錄執行：
-
-```bash
-# 只預覽：0.1.0 -> 0.1.1
-python3 scripts/release.py patch --prepare
-
-# 在乾淨工作目錄套用預覽內容
-python3 scripts/release.py patch --prepare --apply
-
-# 其他選項：擇一使用，不要依序全部執行
-python3 scripts/release.py minor --prepare       # 0.1.0 -> 0.2.0
-python3 scripts/release.py major --prepare       # 0.1.0 -> 1.0.0
-python3 scripts/release.py 0.3.0 --prepare        # 指定版本
-python3 scripts/release.py current --prepare    # 第一版／已準備好的版本
-```
-
-可用 `--date YYYY-MM-DD` 指定發布日期，預設為本機當天日期。
-已準備好的版本會保留原本審查過的日期與 notes。現在初版 `0.1.0` 已有正式段落，
-可用 `current`；該版本發布後，應選更高版本，不要重用版號。
-
-`--apply` 自動更新七個檔案：`pyproject.toml`、`uv.lock`、前端兩個 package 檔案、
-`deploy/compose.image.yaml` 及中英文 changelog。Unreleased 內容會移到新的日期版本
-段落，歷史段落保持不變。相依套件解析結果不變，只同步 root package 版號 metadata。
-部署文件、相容性承諾及 migration 仍需人工 review。
-
-工作目錄不乾淨、降版、缺少翻譯 notes、來源版號不一致，或目標版本段落與 Unreleased
-衝突時，會停止準備。預覽允許未提交內容；套用要求乾淨工作目錄。請 review diff、
-跑測試，依既有流程提交並合併到 `main`。不要重複執行相對升版；`patch` 永遠從
-目前 project 版號往上加。
-
-### B. GitHub 頁面手動發布，不必在本機推送 tag
-
-Workflow 與版本準備 commit 已合併到預設分支後：
+開始前，先將已 review 的程式、文件、相容性與升級說明合併到 `main`。`CHANGELOG.md` 與 `CHANGELOG.zh-TW.md` 的 `[Unreleased]` 都必須包含有意義且互相對應的內容。
 
 1. 打開 **Actions → Release → Run workflow**。
-2. 分支選 **main**。
-3. 輸入已準備好的版本，例如 `0.1.1` 或 `v0.1.1`。
-4. 按下 **Run workflow**。這是正式發布，不是預覽。
-5. 等待驗證、CI、image 上傳及 GitHub Release 公開。
+2. Branch 選 **main**。
+3. 輸入新的 stable MCP SemVer，可包含或省略 `v`，例如 `X.Y.Z` 或 `vX.Y.Z`。不要輸入 `patch`、`minor`、Forgejo 版本或 prerelease 版本。
+4. 按下 **Run workflow**。這是正式 release request，不是預覽。
+5. 等待版本準備、驗證、所有測試、image 發布及 GitHub Release 公開。
 
-輸入版號必須和已提交 metadata 一致；網頁不會偷偷改版號或 commit。
-其他分支的手動發布會被拒絕。Workflow 固定 checkout 觸發時的 commit，測試後
-將 annotated tag 建在同一個 commit，即使 main 在測試期間前進也不會換成未測試版本。
-已有 tag 若指向其他 commit 會拒絕；若指向相同 commit，可供復原流程重用，不會移動。
+手動 workflow 會自行完成機械式升版：
 
-內建 `GITHUB_TOKEN` 推送的 tag **不會**觸發另一個 tag workflow，本次手動 workflow
-會自行完成發布。Repository rules 必須允許 workflow 建立 release tag；不要為此
-任意關閉 tag 保護。
+1. 確認 workflow 從目前的 `origin/main` 啟動，並拒絕無效、較舊或衝突的版號。
+2. 執行 `python scripts/release.py X.Y.Z --prepare --apply`。
+3. 若產生修改，建立 `chore(release): prepare vX.Y.Z` commit 並 push 到 `main`。
+4. 固定新 commit SHA；一般 CI、鎖定的 OpenAPI comparison 及完整 Forgejo E2E matrix 都 checkout 並測試這個相同 commit。
+5. 所有檢查通過後，才在該 SHA 建立 annotated tag、保留 draft GitHub Release、建置含 provenance 與 SBOM 的版本化 GHCR image、加入 digest，並公開 Release。
 
-也可用已登入的 GitHub CLI 手動觸發：
+版本準備只修改以下七個檔案：
+
+- `pyproject.toml`；
+- `uv.lock` 的 root package metadata；
+- `frontend/package.json`；
+- `frontend/package-lock.json` 的 root package metadata；
+- `deploy/compose.image.yaml`；
+- `CHANGELOG.md`；
+- `CHANGELOG.zh-TW.md`。
+
+Release preparation 不會改變 dependency resolution。已 review 的 `[Unreleased]` notes 會移到有日期的版本段落，並保留新的空白 `[Unreleased]`。
+
+內建 `GITHUB_TOKEN` 推送的 commit 與 tag 不會觸發重複 workflow；目前這次 Release workflow 會自行完成所有必要測試與發布。
+
+### 自動建立 release commit 所需的 repository 設定
+
+GitHub Actions 與組織／repository rules 必須允許 Release workflow：
+
+- 使用 `contents: write` 將產生的 release commit push 到 `main`；
+- 使用 `contents: write` 建立受保護的 `v*` tag 與 GitHub Release；
+- 使用 `packages: write` 發布 package。
+
+若 `main` 要求 PR、signed commit，或 workflow 無法 bypass 的檢查，自動 commit 會在建立 tag 或 image 前失敗。只授予 Release workflow 必要的最小 bypass；或者改用下一節的本機準備與 PR 流程，不要全面降低 branch protection。
+
+若同時有人更新 `main`，release commit push 會直接失敗，不會覆蓋較新的 commit。
+
+### GitHub CLI 等效操作
 
 ```bash
-gh workflow run release.yml --ref main -f version=0.1.1
+gh workflow run release.yml --ref main -f version=X.Y.Z
 ```
 
-原本的 `python3 scripts/release.py 0.1.1 --publish` 仍可使用。同一版擇一使用
-網頁／CLI 觸發或本機推送 tag，不要兩邊都執行。兩者都適用 draft reservation
-與本文後面的失敗復原規則。
+同一版只能選擇 GitHub UI 或 CLI dispatch 其中一種，不要同時啟動。
 
-## 發布產物與前置設定
+## 按下 Run workflow 前必須 review 的內容
+
+- 中英文 changelog 都正確描述實際變更。
+- 相容性說明明確區分正式支援的 Forgejo 版本與 comparison baseline。
+- 必要環境變數、secret-file 變更、database migration 與 rollback 限制都有文件。
+- 相容性矩陣與詳細證據符合 release 承諾。
+- Pull-request CI 全部通過。
+- Operator 升級前已有 PostgreSQL 與 credential-encryption secrets 的可用備份方案。
+
+對 v0.2.0 release line，既有安裝必須依[安全加固升級指南](security/upgrade-hardening.zh-TW.md)操作。正式支援 Forgejo 16.0.3；Forgejo 16.0.2 只保留為 comparison baseline。本版沒有 database 或 OAuth migration。
+
+## 選用的本機準備與 tag 發布
+
+若 repository rules 要求 release commit 必須透過 PR review，可改用本機腳本，而不是讓 workflow 自動 push。
+
+在乾淨工作目錄預覽或套用升版：
+
+```bash
+python3 scripts/release.py patch --prepare
+python3 scripts/release.py patch --prepare --apply
+
+# 其他選項：擇一使用
+python3 scripts/release.py minor --prepare
+python3 scripts/release.py major --prepare
+python3 scripts/release.py X.Y.Z --prepare
+```
+
+`--apply` 不會建立 commit 或 push。Review 並提交產生的七個檔案，合併到 `main` 後，再使用相同版號執行手動 workflow，或在本機發布 tag：
+
+```bash
+python3 scripts/release.py X.Y.Z
+python3 scripts/release.py X.Y.Z --publish
+```
+
+本機發布要求工作目錄乾淨、位於 `main`、`HEAD` 等於目前 `origin/main`、release metadata 全部一致，且本機與遠端都沒有衝突 tag。同一個 release 只能選一種發布路徑。
+
+只檢查已準備的 metadata，不檢查 Git 狀態：
+
+```bash
+python3 scripts/release.py X.Y.Z --check
+```
+
+檢查內容包含 Python project 與 lockfile 版號、前端 package 與 lockfile 版號、Compose image 版號，以及中英文 changelog 中非空的正式日期版本段落。
+
+## 發布產物
 
 - Git annotated tag：`vX.Y.Z`。
 - GHCR image：`ghcr.io/<owner>/<repo>:X.Y.Z`，名稱自動轉成小寫。
-- GitHub Release：合併 `CHANGELOG.md` 與 `CHANGELOG.zh-TW.md` 對應版本的中英文段落，附 image digest。
-- 目前只發布 stable SemVer 與 `linux/amd64`。不發布 `latest`、浮動 minor tag，
-  也不自動將 GitHub Release 設為 Latest，避免較舊維護版覆蓋新版指向。
-- 需要 Python 3.12+、Git，以及可推送 repository tag 的身分。
-- GitHub Actions 必須啟用，組織政策須允許 workflow 使用
-  `contents: write` 與 `packages: write`。使用內建 `GITHUB_TOKEN`，不需要額外 PAT。
-- 首次發布後，確認 GHCR package 的 visibility；若要公開下載，請在 package
-  settings 設為 public。已有同名 package 時，需授權此 repository 的 Actions 存取。
-- 建議保護 `main` 與 `v*` tags，禁止修改／刪除已發布版本，限制 release 權限。
-  Draft reservation 是本流程的防重發機制，不是 registry 層級的 immutable-tag 保證。
+- GitHub Release：合併中英文 changelog notes 並附上 image digest。
+- 平台：`linux/amd64`。
+- OCI source、version、受測 commit revision labels、minimal provenance 與 SBOM。
 
-## 發布到哪裡？
+Workflow 不發布 `latest` 或浮動 minor tags、不自動把 GitHub Release 標示為 Latest、不發布到 PyPI 或 Docker Hub，也不會更新執行中的部署。
 
-本 repository `kepatrick/forgejo-mcp` 的發布目的地：
+本 repository 的位置：
 
 | 產物 | 位置 |
 | --- | --- |
-| Git tag | GitHub repository 的 `vX.Y.Z` tag |
-| Release notes 與 image digest | <https://github.com/kepatrick/forgejo-mcp/releases> |
-| Docker image | `ghcr.io/kepatrick/forgejo-mcp:X.Y.Z` |
-| Container package 頁面 | <https://github.com/users/kepatrick/packages/container/package/forgejo-mcp> |
-| 發布執行狀態 | <https://github.com/kepatrick/forgejo-mcp/actions/workflows/release.yml> |
+| Releases | <https://github.com/kepatrick/forgejo-mcp/releases> |
+| Container image | `ghcr.io/kepatrick/forgejo-mcp:X.Y.Z` |
+| Container package | <https://github.com/users/kepatrick/packages/container/package/forgejo-mcp> |
+| Workflow runs | <https://github.com/kepatrick/forgejo-mcp/actions/workflows/release.yml> |
 
-本機腳本在 publish 模式負責檢查、建立及推送 Git tag；prepare 模式只預覽或更新
-本機版本 metadata。也可由手動 Actions 建立 tag。Image 在 GitHub Actions runner 上建置，
-再推送到 **GitHub Container Registry（GHCR）**，不是 Docker Hub。
-它不會發布 Python 套件到 PyPI，也不會自動更新你的部署。
-上面的 image／package 需等第一次成功發布後才可使用；新 package 也需確認公開權限。
-若在 fork 執行，image 路徑會改用該 fork 的 owner／repository。
-
-## 1. 準備 release commit
-
-先將本流程合併進 `main`。發布前完成：
-
-1. 建議使用 `python3 scripts/release.py patch --prepare --apply`（或其他版號選項）
-   同步版本檔案。如果手動修改，則更新 `[project].version`、執行 `uv lock`，並同步
-   前端與 image override。第一版若使用現有 `0.1.0`，不需為了發布任意提高版本。
-2. 將 `CHANGELOG.md` 與 `CHANGELOG.zh-TW.md` 要發布的內容移到有日期的版本段落，
-   保留新的 `[Unreleased]`；兩種語言使用相同版號與實際發布日期。
-3. 明確寫出 Forgejo 相容性、環境變數變更、migration、升級與回滾限制。
-4. Review、commit、合併並 push 到 `origin/main`。
-
-Changelog 格式（日期與內容請依實際 release 填寫）：
-
-```markdown
-## [Unreleased]
-
-## [0.1.0] - YYYY-MM-DD
-
-### Added
-- Initial release.
-
-### Compatibility
-- Tested against Forgejo 16.0.2.
-
-### Upgrade notes
-- Back up PostgreSQL and credential encryption secrets before upgrading.
-- Describe required migrations and rollback compatibility here.
-```
-
-只有明確指定 `--prepare --apply` 才會更新版號及 lockfile，且不會替你 commit。
-`--publish` 只發布已提交的 metadata，不會隱式升版。
-
-### 首次 v0.1.0 發布準備清單
-
-目前準備的 release 以 Forgejo 16.0.2 為目標，不包含 PR #3。
-Project、lockfile 與前端版本均已是 `0.1.0`，不需要提高版號。
-Changelog 暫定日期為 `2026-09-08`；若改天發布，請同步調整中英文日期。
-
-- [ ] 確認中英文 changelog，特別是相容性與升級說明。
-- [ ] Review `scripts/release.py`、測試、兩份 Actions workflow 與 image override。
-- [ ] 確認 Actions／package 寫入權限，安排首次發布後設定 GHCR public access。
-- [ ] 自行檢查未追蹤的巢狀 `forgejo-mcp/` checkout；需要保留時移到此工作目錄外。
-      不要把它加入 release commit，也不要直接刪除。
-- [ ] 執行 `python3 scripts/release.py 0.1.0 --check` 與測試。
-- [ ] 依專案 review 政策提交變更、合併並推送到 `main`。需包含中英文 changelog、
-      `scripts/release.py`、`tests/unit/test_release_script.py`、`.github/workflows/ci.yml`、
-      `.github/workflows/release.yml`、`deploy/compose.image.yaml`、中英文發布指南與 README。
-      未檢查 untracked files 前，不要直接 `git add .`。
-- [ ] 確認工作目錄乾淨，且本機 `main` 與遠端 `main` 一致。
-- [ ] 預覽後，確定要公開發布時才執行 `--publish`。
-- [ ] 等待 Release workflow，確認 GHCR digest／公開權限，並測試免登入 pull。
-
-## 2. 預覽，再明確發布
-
-在 repository 根目錄：
-
-```bash
-python3 scripts/release.py 0.1.0
-# 確認 version、commit 與 notes 無誤後才執行：
-python3 scripts/release.py 0.1.0 --publish
-```
-
-預設只有檢查與預覽，不建立 tag、不 push。
-檢查包含版號／lockfile 一致、非空的正式 changelog、乾淨工作目錄（含 untracked）、
-位於 main、HEAD 等於遠端 main、tag 在本機與遠端都不存在。
-它會以 `git ls-remote` 讀取遠端，不會自動 fetch、merge 或 push branch。
-
-若有未追蹤的資料夾，請先自行確認內容，再移到 repository 外，或依專案政策忽略；
-不要為了通過檢查直接執行 `git clean`。
-
-只檢查 release metadata（不代表可安全發布）：
-
-```bash
-python3 scripts/release.py v0.1.0 --check
-```
-
-## 3. GitHub Actions 執行流程
-
-推送 `v*` tag 或使用 **Run workflow** 後，`.github/workflows/release.yml` 會：
-
-1. 驗證 stable tag、metadata，以及該 commit 已包含在遠端 main。
-2. 重用 CI：Python lint／typecheck／PostgreSQL 測試、前端檢查與 build、
-   現有完整 Docker E2E。相容性測試範圍仍以當時的 CI 設定為準；目前不是多版本 matrix。
-3. 手動發布時先在已測試 commit 建立或驗證 tag，再確認沒有同 tag 的 GitHub Release
-   （包含 draft），建立 draft 作為發布保留記錄。
-4. Build 並 push 版本 image，附 OCI version、revision、source labels、provenance 與 SBOM。
-5. 將 digest 加入 notes，公開 GitHub Release。
-
-任一測試失敗都不進入 publish job。推送 tag 不等於發布完成，請確認 Actions 結果。
+若需要匿名下載，請確認 GHCR package 已設為 public。已有 package 時，必須授權此 repository 的 Actions 存取。
 
 ## 使用已發布 image
 
-以下指令僅適用於該版本確實發布後。請使用該 release 的部署檔案及升級說明，
-不要任意混用新版 Compose 與舊 image。範例 image 路徑：
-
-```text
-ghcr.io/kepatrick/forgejo-mcp:0.1.0
-```
-
-現有 `deploy/compose.yaml` 預設為本地 build。已附上的 `deploy/compose.image.yaml`
-預設使用 `ghcr.io/kepatrick/forgejo-mcp:0.1.0`。若要選擇其他已發布版本、fork image
-或 digest，可在 `deploy/.env` 設定 `FMCP_IMAGE`（或在 shell export）：
+請使用同一個 release tag 的部署檔案與升級說明。未經 review，不要混用新版 Compose 與舊 image。
 
 ```dotenv
-FMCP_IMAGE=ghcr.io/kepatrick/forgejo-mcp:0.1.0
+FMCP_IMAGE=ghcr.io/kepatrick/forgejo-mcp:X.Y.Z
 ```
-
-沿用既有 secrets／環境設定，並明確禁止本機 build：
 
 ```bash
 docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.image.yaml pull app
 docker compose --env-file deploy/.env -f deploy/compose.yaml -f deploy/compose.image.yaml up -d --no-build
 ```
 
-正式部署可將 image 改成 release notes 中的 `ghcr.io/...@sha256:...`。
-資料庫 migration 不一定向後相容，回滾不能只換回舊 image；升級前應備份資料庫
-及 credential encryption secrets，並閱讀 release 的回滾限制。
+Production 建議使用 release notes 中以 digest 固定的 `ghcr.io/...@sha256:...`。升級前請備份 PostgreSQL 與 credential-encryption secrets。切換回舊 image 不會自動回滾 database schema 或設定。
 
 ## 發布失敗與重試
 
-**不要 force-push、移動 Git tag，或覆蓋已發布 image。**
+**不要 force-push、移動 release tag，或覆蓋已發布 image。**
 
-- 本機 tag push 失敗：腳本保留 annotated tag，因為網路錯誤不代表遠端沒有收到。
-  先檢查 `git ls-remote origin refs/tags/vX.Y.Z` 與 Actions；確認遠端沒有該 tag 後，
-  可手動 `git push origin refs/tags/vX.Y.Z`，無須重建 tag。
-- 驗證或 CI 失敗、尚未建立 draft：若是暫時性問題，可以 rerun；若需修改程式，
-  用新 commit／新版本，不要把既有 tag 移到修正版。
-- Draft 已建立但 image 尚未 push：workflow 會拒絕直接重跑。人工確認 GHCR
-  **確實沒有**該版本 image 後，才刪除 draft（不要刪 Git tag），再 rerun。
-- Image 已 push，但 Release 公開步驟失敗：不要重建 image。核對 image revision
-  與 tag commit，使用 `docker buildx imagetools inspect ghcr.io/<owner>/<repo>:X.Y.Z`
-  取得 digest，將 image／digest 補入現有 draft，再手動 publish draft。
-- Release 已存在：腳本／workflow 拒絕重新發布。修正請發新 patch 版本。
+- **自動 release commit push 被拒絕：**尚未建立 tag 或 image。修正 repository rule，或改由本機準備並透過 PR review，之後可用相同版號重試。
+- **Preparation commit 已 push，但 validation／CI 在建立 tag 前失敗：**暫時性錯誤可用相同版號重跑，workflow 會重用已準備的 metadata。若必須修改程式或 changelog，請準備新的 patch 版，不要把內容加入已準備好的版本段落。
+- **本機 tag push 失敗：**先檢查 `git ls-remote origin refs/tags/vX.Y.Z` 與 Actions。本機 annotated tag 會刻意保留；若遠端沒有 tag，推送現有 tag，不要重建或移動。
+- **已有 draft、但尚未 push image：**確認 GHCR 沒有該版本 image，刪除 draft、不要刪 tag，再 rerun。
+- **Image 已 push、但 Release 公開失敗：**不要 rebuild。確認 image revision 等於 tag commit，以 `docker buildx imagetools inspect` 取得 digest，補入現有 draft 後手動公開。
+- **Release 已存在：**修正內容必須使用新的 patch 版本發布。

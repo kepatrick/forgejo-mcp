@@ -1,6 +1,8 @@
 # Forgejo MCP
 
-Upgrading an existing installation? Read [security upgrade instructions](docs/security/upgrade-hardening.md).
+The current `main` branch requires Forgejo 16.0.3. Forgejo 16.0.2 is retained only as a comparison baseline; see the [version compatibility matrix](docs/compatibility.md).
+
+Upgrading an existing installation? Read the [security upgrade instructions](docs/security/upgrade-hardening.md).
 
 [繁體中文](README.zh-TW.md)
 
@@ -10,7 +12,7 @@ Forgejo MCP is a self-hosted [Model Context Protocol](https://modelcontextprotoc
 
 Users connect with their own scoped Forgejo personal access tokens (PATs). Administrators decide which MCP tools are enabled globally, available to each user and granted to each show-once MCP token.
 
-> **v0.1.0 is the initial open-source release.** The core workflow is tested against Forgejo 16.0.2 and 16.0.3, while some production deployment capabilities are not yet complete. Review the [known limitations](docs/known-limitations.md) before production use.
+> **v0.1.0 is the initial open-source release and supports Forgejo 16.0.2.** The v0.2.0 release line and current `main` support Forgejo 16.0.3 and include deployment security changes. Review the [compatibility matrix](docs/compatibility.md), [upgrade guide](docs/security/upgrade-hardening.md) and [known limitations](docs/known-limitations.md) before production use.
 
 ## What it provides
 
@@ -47,7 +49,7 @@ Forgejo MCP does not replace Forgejo authorization. A tool is available only whe
 
 ## Requirements
 
-- An existing Forgejo 16.0.2 or 16.0.3 instance compatible with the locked API contract
+- An existing Forgejo 16.0.3 instance compatible with the locked API contract for the current `main` branch
 - Docker Engine with Docker Compose
 - OpenSSL for generating local secrets
 
@@ -134,6 +136,7 @@ The MCP token is shown only once. Store it in the client's secret storage; query
 | Configure Forgejo, users and permissions | [Administrator guide](docs/admin-guide.md) |
 | Create a PAT and MCP token | [User guide](docs/user-guide.md) |
 | Connect an MCP client | [MCP client configuration](docs/mcp-client-configuration.md) |
+| Check MCP and Forgejo version support | [Version compatibility](docs/compatibility.md) |
 | Review current constraints | [Known limitations](docs/known-limitations.md) |
 | Inspect tool inputs and behavior | [v1 tool catalog](docs/tools/v1-tool-catalog.md) |
 | Review credential handling | [Credential security](docs/security/credentials.md) |
@@ -165,13 +168,13 @@ npm run typecheck --prefix frontend
 npm run build --prefix frontend
 ```
 
-Forgejo defaults to the official mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`; both 16.0.2 and 16.0.3 Swagger checksums are locked. Verify either supported contract with:
+Forgejo defaults to the supported official mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`; the supported 16.0.3 contract and the 16.0.2 comparison baseline both have locked Swagger checksums. Verify either known contract with:
 
 ```bash
 uv run python scripts/verify_forgejo_openapi.py https://forgejo.example/swagger.v1.json
 ```
 
-Launch both supported releases and reproduce the complete Swagger comparison with:
+Launch the supported release and comparison baseline to reproduce the complete Swagger comparison with:
 
 ```bash
 ./scripts/test-forgejo-openapi-compatibility.sh

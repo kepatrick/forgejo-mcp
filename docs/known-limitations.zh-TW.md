@@ -1,27 +1,28 @@
-# Forgejo MCP v0.1.0 已知限制
+# Forgejo MCP 已知限制
 
 [English](known-limitations.md)
 
-v0.1.0 是第一個開源版本，已提供完整 Forgejo 開發流程與核心安全模型，但部分 production-readiness 能力仍未完成。
+Forgejo MCP 已提供完整 Forgejo 開發流程與核心安全模型，但部分 production-readiness 能力仍未完成。
 
 ## 相容性
 
-- API contract 固定為 Forgejo `16.0.2+gitea-1.22.0` 與 `16.0.3+gitea-1.22.0`；開發預設使用官方 mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`。
-- 其他 Forgejo 版本可能可以運作，但使用前必須執行 `scripts/verify_forgejo_openapi.py` 與本地 integration suite。
+- 目前 source 正式支援 Forgejo `16.0.3+gitea-1.22.0`；開發預設使用官方 mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`。
+- Forgejo `16.0.2+gitea-1.22.0` 只保留為 CI comparison baseline。各 MCP release 的支援範圍請見[版本相容性矩陣](compatibility.zh-TW.md)。
+- 其他 Forgejo 版本即使可能可以運作，OpenAPI verification 或本地測試也不代表正式支援；納入支援需要更新矩陣並發布新的 MCP 版本。
 - Server 支援使用 Bearer authentication 的 MCP Streamable HTTP，但尚未驗證所有 MCP clients 的專屬設定格式。
 
 ## 部署
 
-- v0.1.0 只支援 Docker Compose 部署；React Dashboard 已 build 進 App image，不需要另外啟動前端或後端開發 server。
+- 目前 source 支援 Docker Compose 部署；React Dashboard 已 build 進 App image，不需要另外啟動前端或後端開發 server。
 - 尚未提供正式環境 TLS reverse-proxy 範例。
 - 正式暴露 `/metrics` 前，必須透過 deployment network 或 reverse proxy 限制存取。
 - PostgreSQL backup/restore scripts、credential-key backup procedures 與 restore drill 尚未完成。
-- Upgrade、rollback 與 incident-response runbooks 尚未完成。
+- 已提供安全加固升級指南，但完整 backup/restore 與 incident-response runbooks 尚未完成。
 - 目前 Compose configuration 是從 source build 的 self-hosting 參考，不是完整的 production infrastructure platform。Operator 需自行負責 TLS termination、network controls 與 infrastructure operations。
 
 ## 擴展與可用性
 
-- v0.1.0 App 設計為單一 replica。
+- App 設計為單一 replica。
 - MCP 與 login rate-limit state 儲存在記憶體中，不會在 replicas 之間共享。
 - Active MCP transport sessions 屬於單一 process，App restart 後 client 必須重新連線。
 - Graceful shutdown 會在設定的 timeout 內等待 active tool invocations，但 host 或 database 被強制中斷時，工作仍可能中止。
@@ -44,8 +45,8 @@ v0.1.0 是第一個開源版本，已提供完整 Forgejo 開發流程與核心�
 ## 測試
 
 - 已提供 unit、integration 與 frontend quality checks。
-- 真實 App/PostgreSQL/Forgejo development-flow E2E 透過 `scripts/test-full-docker-e2e.sh` 在本地執行，依 v0.1.0 決策不接入 workflow CI。
-- Failure injection、security penetration testing、backup restore drill 與多版本 Forgejo compatibility testing 尚未完成。
+- 真實 App/PostgreSQL/Forgejo development-flow E2E 會在本地、pull request CI 與 release CI 執行，涵蓋正式支援的 Forgejo 16.0.3 與保留的 16.0.2 comparison baseline。
+- Failure injection、security penetration testing 與 backup restore drill 尚未完成。
 
 ## 安全邊界
 
@@ -62,6 +63,5 @@ v0.1.0 是第一個開源版本，已提供完整 Forgejo 開發流程與核心�
 2. `/metrics` monitoring-network restrictions；
 3. PostgreSQL 與 secrets backup/restore automation；
 4. 實際 restore drill；
-5. Upgrade、rollback 與 incident-response runbooks；
-6. Failure-injection 與 security validation；
-7. Container publishing 與 SBOM generation。
+5. 完整 rollback 與 incident-response runbooks；
+6. Failure-injection 與 security validation。

@@ -1,27 +1,28 @@
-# Forgejo MCP v0.1.0 Known Limitations
+# Forgejo MCP Known Limitations
 
 [繁體中文版](known-limitations.zh-TW.md)
 
-v0.1.0 is the initial open-source release. It provides the complete Forgejo development workflow and core security model, while some production-readiness capabilities remain incomplete.
+Forgejo MCP provides the complete Forgejo development workflow and core security model, while some production-readiness capabilities remain incomplete.
 
 ## Compatibility
 
-- The API contract is locked to Forgejo `16.0.2+gitea-1.22.0` and `16.0.3+gitea-1.22.0`; the development default is the official `data.forgejo.org/forgejo/forgejo:16.0.3-rootless` image.
-- Other Forgejo versions may work, but must be checked with `scripts/verify_forgejo_openapi.py` and the local integration suite before use.
+- The current source supports Forgejo `16.0.3+gitea-1.22.0`; the development default is the official `data.forgejo.org/forgejo/forgejo:16.0.3-rootless` image.
+- Forgejo `16.0.2+gitea-1.22.0` is retained only as a comparative CI baseline. See the [version compatibility matrix](compatibility.md) for release-specific support.
+- Other Forgejo versions may work, but OpenAPI verification or local testing does not make them supported; support requires an updated matrix and a new MCP release.
 - The server supports MCP Streamable HTTP with Bearer authentication. Client-specific configuration examples are not yet validated for every MCP client.
 
 ## Deployment
 
-- v0.1.0 supports Docker Compose deployment; the React Dashboard is built into the App image, so separate frontend and backend development servers are not part of the operator workflow.
-- A production TLS reverse-proxy example is not included in v0.1.0.
+- The current source supports Docker Compose deployment; the React Dashboard is built into the App image, so separate frontend and backend development servers are not part of the operator workflow.
+- A production TLS reverse-proxy example is not included.
 - `/metrics` must be restricted by deployment networking or a reverse proxy before production exposure.
 - PostgreSQL backup/restore scripts, credential-key backup procedures and restore drills are deferred.
-- Upgrade, rollback and incident-response runbooks are deferred.
+- A security hardening upgrade guide is available, but complete backup/restore and incident-response runbooks are deferred.
 - The included Compose configuration is a source-based self-hosting reference, not a complete production infrastructure platform. Operators are responsible for TLS termination, network controls and infrastructure operations.
 
 ## Scaling and availability
 
-- The App is designed for a single replica in v0.1.0.
+- The App is designed for a single replica.
 - MCP and login rate-limit state is held in memory and is not shared across replicas.
 - Active MCP transport sessions are process-local and clients must reconnect after an App restart.
 - Graceful shutdown drains active tool invocations within a configured timeout, but a forced host or database failure can still interrupt work.
@@ -44,7 +45,7 @@ v0.1.0 is the initial open-source release. It provides the complete Forgejo deve
 ## Testing
 
 - Unit, integration and frontend quality checks are available.
-- The real App/PostgreSQL/Forgejo development-flow E2E runs locally with `scripts/test-full-docker-e2e.sh` and in pull-request CI against both supported Forgejo releases.
+- The real App/PostgreSQL/Forgejo development-flow E2E runs locally and in pull-request and release CI against supported Forgejo 16.0.3 and the retained 16.0.2 comparison baseline.
 - Failure-injection, security penetration testing and backup restore drills are deferred.
 
 ## Security boundary
@@ -62,6 +63,5 @@ The next production-oriented work package covers:
 2. monitoring-network restrictions for `/metrics`;
 3. PostgreSQL and secret backup/restore automation;
 4. a real restore drill;
-5. upgrade, rollback and incident-response runbooks;
-6. failure-injection and security validation;
-7. container publishing and SBOM generation.
+5. complete rollback and incident-response runbooks;
+6. failure-injection and security validation.

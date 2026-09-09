@@ -1,6 +1,8 @@
 # Forgejo MCP
 
-升級既有部署？請先閱讀[安全加固升級指南（英文）](docs/security/upgrade-hardening.md)。
+目前 `main` branch 需要 Forgejo 16.0.3。Forgejo 16.0.2 只保留為 comparison baseline；詳見[版本相容性矩陣](docs/compatibility.zh-TW.md)。
+
+升級既有部署？請先閱讀[安全加固升級指南](docs/security/upgrade-hardening.zh-TW.md)。
 
 [English](README.md)
 
@@ -10,7 +12,7 @@ Forgejo MCP 是一套自架的 [Model Context Protocol](https://modelcontextprot
 
 每位使用者透過自己的 scoped Forgejo personal access token（PAT）操作 Forgejo；管理員則決定哪些 MCP 工具可全域使用、可提供給特定使用者，以及可授權給只顯示一次的 MCP token。
 
-> **v0.1.0 是第一個開源版本。** 核心流程已使用 Forgejo 16.0.2 與 16.0.3 完成驗證，但部分 production deployment 能力尚未完整。正式使用前請先閱讀[已知限制](docs/known-limitations.zh-TW.md)。
+> **v0.1.0 是第一個開源版本，支援 Forgejo 16.0.2。** v0.2.0 release line 與目前 `main` 支援 Forgejo 16.0.3，並包含 deployment security 變更。正式使用前請閱讀[相容性矩陣](docs/compatibility.zh-TW.md)、[升級指南](docs/security/upgrade-hardening.zh-TW.md)與[已知限制](docs/known-limitations.zh-TW.md)。
 
 ## 能做什麼
 
@@ -47,7 +49,7 @@ Forgejo MCP 不會取代 Forgejo 本身的授權。工具必須已全域啟用�
 
 ## 系統需求
 
-- 符合已鎖定 Forgejo 16.0.2 或 16.0.3 API contract 的既有 Forgejo instance
+- 符合目前 `main` 已鎖定 Forgejo 16.0.3 API contract 的既有 Forgejo instance
 - Docker Engine 與 Docker Compose
 - 用於產生本地 secrets 的 OpenSSL
 
@@ -55,7 +57,7 @@ v0.1.0 支援的部署方式會把 React Dashboard build 進 App image，並一�
 
 ## 快速啟動
 
-**以下僅適用於全新安裝。** 既有部署請依[升級指南（英文）](docs/security/upgrade-hardening.md)操作，不要重新產生資料庫密碼或 encryption key。
+**以下僅適用於全新安裝。** 既有部署請依[升級指南](docs/security/upgrade-hardening.zh-TW.md)操作，不要重新產生資料庫密碼或 encryption key。
 
 在 repository 根目錄執行：
 
@@ -134,9 +136,11 @@ MCP token 只會顯示一次，請存放在 client 的 secret storage；系統�
 | 設定 Forgejo、使用者與權限 | [管理員指南](docs/admin-guide.zh-TW.md) |
 | 建立 PAT 與 MCP token | [使用者指南](docs/user-guide.zh-TW.md) |
 | 連接 MCP client | [MCP client 設定](docs/mcp-client-configuration.zh-TW.md) |
+| 查詢 MCP 與 Forgejo 版本支援 | [版本相容性](docs/compatibility.zh-TW.md) |
 | 確認目前限制 | [已知限制](docs/known-limitations.zh-TW.md) |
 | 查詢工具 input 與行為 | [v1 工具目錄](docs/tools/v1-tool-catalog.md) |
 | 檢視 credential 處理方式 | [Credential security](docs/security/credentials.md) |
+| 檢視 Forgejo 16.0.3 證據 | [Forgejo 16.0.3 相容性報告（英文）](docs/forgejo-16.0.3-compatibility.md) |
 
 ## 開發與驗證
 
@@ -144,6 +148,12 @@ MCP token 只會顯示一次，請存放在 client 的 secret storage；系統�
 
 ```bash
 ./scripts/test-full-docker-e2e.sh
+```
+
+預設開發 image 是 Forgejo 16.0.3。若要對 16.0.2 comparison baseline 執行相同的完整 E2E：
+
+```bash
+FORGEJO_IMAGE=data.forgejo.org/forgejo/forgejo:16.0.2-rootless ./scripts/test-full-docker-e2e.sh
 ```
 
 執行各項品質檢查：
@@ -158,11 +168,19 @@ npm run typecheck --prefix frontend
 npm run build --prefix frontend
 ```
 
-Forgejo 開發預設 image 為官方 mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`，並同時鎖定 16.0.2 與 16.0.3 Swagger checksum。可以使用下列指令驗證支援的 instance contract：
+Forgejo 開發預設使用正式支援的官方 mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`；正式支援的 16.0.3 contract 與 16.0.2 comparison baseline 都有鎖定的 Swagger checksum。可以使用下列指令驗證已知 contract：
 
 ```bash
 uv run python scripts/verify_forgejo_openapi.py https://forgejo.example/swagger.v1.json
 ```
+
+啟動正式支援版本與 comparison baseline，重現完整 Swagger comparison：
+
+```bash
+./scripts/test-forgejo-openapi-compatibility.sh
+```
+
+Integration 與 full-stack suites 都會明確使用 MCP Streamable HTTP protocol version `2025-06-18`。
 
 ## 授權條款
 

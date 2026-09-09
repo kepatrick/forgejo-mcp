@@ -2,7 +2,7 @@
 
 ## Executive summary
 
-Forgejo 16.0.3 is the minimum supported version. Forgejo 16.0.2 remains a comparative non-regression baseline, not a supported deployment target. The official Swagger documents contain no endpoint-level difference: every path, method, operation ID, parameter, request body and response used by the 50-tool MCP catalog is unchanged.
+For the Forgejo MCP v0.2.0 release line, Forgejo 16.0.3 is the minimum and only supported version. Forgejo 16.0.2 remains a comparative non-regression baseline, not a supported deployment target. The official Swagger documents contain no endpoint-level difference: every path, method, operation ID, parameter, request body and response used by the 50-tool MCP catalog is unchanged.
 
 The only functional schema change is that Forgejo 16.0.3 marks `index`, `owner` and `repo` as required in `IssueMeta`. Forgejo MCP does not consume or emit `IssueMeta`, so no endpoint adapter or generated client change is required.
 
@@ -62,15 +62,11 @@ No additional Forgejo or GitHub permission is introduced.
 
 Security regression summary: no critical, high, medium or low regression was identified in the compatibility diff. Existing documented deployment limitations remain unchanged.
 
-### SEC-001: Pre-existing frontend build dependency advisory
+### SEC-001: Resolved frontend build dependency advisory
 
-- **Severity:** High according to `npm audit`; not introduced by this change.
-- **Location:** `frontend/package-lock.json`, `node_modules/nanoid` and the PostCSS dependency declaration.
-- **Evidence:** the unchanged lockfile resolves `vite -> postcss -> nanoid@3.3.16`; `npm audit --audit-level=high` reports GHSA-2v37-7h3g-55p8, fixed in nanoid 3.3.18.
-- **Impact:** affected custom nanoid generators can loop indefinitely when invoked with a zero size. The package is a transitive frontend build dependency here; no direct application import was found.
-- **Fix:** update the compatible PostCSS/nanoid dependency chain in a dedicated dependency change and run the complete frontend and E2E suites.
-- **Mitigation:** CI uses the committed lockfile through `npm ci`; this compatibility change modifies neither `frontend/package.json` nor `frontend/package-lock.json`.
-- **False-positive notes:** production reachability through the current Vite/PostCSS build path should be reassessed with the dependency update; the npm advisory severity is retained rather than downgraded here.
+- **Original finding:** The compatibility review found `vite -> postcss -> nanoid@3.3.16`, affected by GHSA-2v37-7h3g-55p8. It was a transitive build dependency with no direct application import and was not introduced by the Forgejo compatibility change.
+- **Resolution before release:** The subsequent security-hardening change updated the lockfile to `nanoid` 3.3.18. `npm audit` now reports no known vulnerabilities.
+- **Historical scope:** The validation results below describe the compatibility review at its recorded commit and date; the release-gating CI validates the combined release candidate.
 
 ## Validation results
 

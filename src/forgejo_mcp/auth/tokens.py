@@ -12,6 +12,21 @@ def new_mcp_token() -> str:
     return f"fmcp_{secrets.token_urlsafe(32)}"
 
 
+def new_oauth_refresh_token() -> str:
+    """Return an opaque, recognizable OAuth refresh token."""
+    return f"fmcp_rt_{secrets.token_urlsafe(32)}"
+
+
+def new_oauth_code() -> str:
+    """Return a single-use OAuth authorization code with 256 bits of entropy."""
+    return f"fmcp_ac_{secrets.token_urlsafe(32)}"
+
+
+def new_oauth_interaction_token() -> str:
+    """Return an opaque handle for the browser login and consent interaction."""
+    return f"fmcp_oi_{secrets.token_urlsafe(32)}"
+
+
 def mcp_token_prefix(token: str) -> str:
     """Return a non-secret display prefix without exposing the complete token."""
     return token[:13]

@@ -1,5 +1,9 @@
 # Forgejo MCP
 
+Optional [OAuth authorization](docs/security/oauth-2.1.md) is disabled by default.
+Read the [upgrade and rollback notes](docs/security/oauth-upgrade.md) before enabling it.
+For Claude/OpenAI connection failures, see [edge troubleshooting](docs/oauth-client-edge-troubleshooting.md).
+
 The current `main` branch requires Forgejo 16.0.3. Forgejo 16.0.2 is retained only as a comparison baseline; see the [version compatibility matrix](docs/compatibility.md).
 
 Upgrading an existing installation? Read the [security upgrade instructions](docs/security/upgrade-hardening.md).
@@ -168,7 +172,15 @@ npm run typecheck --prefix frontend
 npm run build --prefix frontend
 ```
 
-Forgejo defaults to the supported official mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`; the supported 16.0.3 contract and the 16.0.2 comparison baseline both have locked Swagger checksums. Verify either known contract with:
+Forgejo defaults to `codeberg.org/forgejo/forgejo:16.0.3-rootless`. The test Forgejo image uses the official primary registry by default. The runner separately uses `data.forgejo.org/forgejo/runner:13`, as documented by Forgejo; it is not assumed to exist on Codeberg. If the Forgejo primary registry is unavailable, explicitly select its official mirror without changing image versions:
+
+```bash
+FORGEJO_IMAGE_REGISTRY=data.forgejo.org ./scripts/test-full-docker-e2e.sh
+```
+
+`FORGEJO_RUNNER_IMAGE_REGISTRY` independently overrides the runner registry (default: `data.forgejo.org`).
+
+`FORGEJO_IMAGE` overrides the complete Forgejo image reference and takes precedence over the registry setting. The supported 16.0.3 contract and the 16.0.2 comparison baseline both have locked Swagger checksums. Verify either known contract with:
 
 ```bash
 uv run python scripts/verify_forgejo_openapi.py https://forgejo.example/swagger.v1.json

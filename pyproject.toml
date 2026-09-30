@@ -25,6 +25,7 @@ dependencies = [
 dev = [
   "httpx>=0.28,<1",
   "mypy>=1.14,<2",
+  "playwright>=1.50,<2",
   "pytest>=9.0.3,<10",
   "pytest-asyncio>=1,<2",
   "ruff>=0.9,<1",

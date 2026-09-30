@@ -6,7 +6,7 @@ Forgejo MCP 已提供完整 Forgejo 開發流程與核心安全模型，但部�
 
 ## 相容性
 
-- 目前 source 正式支援 Forgejo `16.0.3+gitea-1.22.0`；開發預設使用官方 mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`。
+- 目前 source 正式支援 Forgejo `16.0.3+gitea-1.22.0`；開發預設使用 `codeberg.org/forgejo/forgejo:16.0.3-rootless`。可設定 `FORGEJO_IMAGE_REGISTRY=data.forgejo.org` 切換官方 mirror，或用 `FORGEJO_IMAGE` 覆寫完整 image。Runner 獨立使用 `data.forgejo.org/forgejo/runner:13`，可透過 `FORGEJO_RUNNER_IMAGE_REGISTRY` 覆寫其 registry。
 - Forgejo `16.0.2+gitea-1.22.0` 只保留為 CI comparison baseline。各 MCP release 的支援範圍請見[版本相容性矩陣](compatibility.zh-TW.md)。
 - 其他 Forgejo 版本即使可能可以運作，OpenAPI verification 或本地測試也不代表正式支援；納入支援需要更新矩陣並發布新的 MCP 版本。
 - Server 支援使用 Bearer authentication 的 MCP Streamable HTTP，但尚未驗證所有 MCP clients 的專屬設定格式。

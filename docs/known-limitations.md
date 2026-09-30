@@ -6,7 +6,7 @@ Forgejo MCP provides the complete Forgejo development workflow and core security
 
 ## Compatibility
 
-- The current source supports Forgejo `16.0.3+gitea-1.22.0`; the development default is the official `data.forgejo.org/forgejo/forgejo:16.0.3-rootless` image.
+- The current source supports Forgejo `16.0.3+gitea-1.22.0`; the development default is `codeberg.org/forgejo/forgejo:16.0.3-rootless`. Set `FORGEJO_IMAGE_REGISTRY=data.forgejo.org` to use its official mirror, or `FORGEJO_IMAGE` to override the complete image reference. The runner separately defaults to `data.forgejo.org/forgejo/runner:13`; use `FORGEJO_RUNNER_IMAGE_REGISTRY` to override its registry.
 - Forgejo `16.0.2+gitea-1.22.0` is retained only as a comparative CI baseline. See the [version compatibility matrix](compatibility.md) for release-specific support.
 - Other Forgejo versions may work, but OpenAPI verification or local testing does not make them supported; support requires an updated matrix and a new MCP release.
 - The server supports MCP Streamable HTTP with Bearer authentication. Client-specific configuration examples are not yet validated for every MCP client.

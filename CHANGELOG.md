@@ -8,6 +8,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-30
+
 ### Added
 
 - Opt-in OAuth authorization with PKCE S256, dynamic registration, bounded consent lifetimes and rotating opaque refresh tokens.

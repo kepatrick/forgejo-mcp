@@ -10,7 +10,7 @@
 
 Forgejo MCP 是一套自架的 [Model Context Protocol](https://modelcontextprotocol.io/) 伺服器與管理 Dashboard，讓公司能以集中治理、可控且可觀測的方式，開放 AI client 操作既有 Forgejo instance。
 
-每位使用者透過自己的 scoped Forgejo personal access token（PAT）操作 Forgejo；管理員則決定哪些 MCP 工具可全域使用、可提供給特定使用者，以及可授權給只顯示一次的 MCP token。
+每位使用者可透過自己的 scoped Forgejo personal access token（PAT），或選用 [Forgejo OAuth 憑證連結](docs/security/forgejo-oauth.md)操作 Forgejo。這與「MCP client 連入 Forgejo MCP」的 OAuth 是兩段不同的授權。Forgejo OAuth 沒有細分 API scopes，需要更窄的上游權限時仍應使用 scoped PAT；管理員設定全域及使用者工具上限，使用者再選擇各 MCP token 的工具權限。
 
 > **v0.1.0 是第一個開源版本，支援 Forgejo 16.0.2。** v0.2.0 release line 與目前 `main` 支援 Forgejo 16.0.3，並包含 deployment security 變更。正式使用前請閱讀[相容性矩陣](docs/compatibility.zh-TW.md)、[升級指南](docs/security/upgrade-hardening.zh-TW.md)與[已知限制](docs/known-limitations.zh-TW.md)。
 

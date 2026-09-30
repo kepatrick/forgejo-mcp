@@ -52,6 +52,11 @@ from forgejo_mcp.observability.metrics import (
     FORGEJO_RETRIES,
 )
 
+
+class ForgejoOAuthToken(str):
+    """A token requiring the OAuth Bearer scheme rather than PAT authentication."""
+
+
 MAX_VERSION_RESPONSE_BYTES = 64 * 1024
 MAX_USER_RESPONSE_BYTES = 256 * 1024
 MAX_JSON_RESPONSE_BYTES = 2 * 1024 * 1024
@@ -1820,7 +1825,8 @@ class ForgejoClient:
     ) -> httpx.Response:
         method = method.upper()
         retries = self.safe_retry_attempts if method in {"GET", "HEAD", "OPTIONS"} else 0
-        headers = {"Authorization": f"token {token}"} if token is not None else None
+        scheme = "Bearer" if isinstance(token, ForgejoOAuthToken) else "token"
+        headers = {"Authorization": f"{scheme} {token}"} if token is not None else None
         response: httpx.Response | None = None
         for attempt in range(retries + 1):
             started = time.monotonic()

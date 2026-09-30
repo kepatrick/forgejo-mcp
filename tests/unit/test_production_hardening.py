@@ -194,7 +194,9 @@ async def test_inherited_unverified_tls_is_rejected_before_pat_verification() ->
 
     class FakeUsers:
         async def get(self, _user_id: uuid.UUID) -> SimpleNamespace:
-            return SimpleNamespace(id=user_id, normalized_forgejo_username="patrick")
+            return SimpleNamespace(
+                id=user_id, normalized_forgejo_username="patrick", status="active"
+            )
 
     class FakeInstances:
         async def primary(self) -> SimpleNamespace:

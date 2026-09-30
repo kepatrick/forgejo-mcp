@@ -484,8 +484,9 @@ def _login_page(
         "autocomplete='current-password' required maxlength='1024'></label>"
         f"{error}<button type='submit'>Sign in</button></form>"
         "<p class='description'>Use the Dashboard user account linked to your Forgejo identity, "
-        "not an administrator account. First accept your invitation, verify your Forgejo PAT "
-        "in the Dashboard, and ask your administrator to enable your tools.</p>"
+        "not an administrator account. First accept your invitation, connect with Forgejo OAuth "
+        "or verify your Forgejo PAT in the Dashboard, and ask your administrator to enable "
+        "your tools.</p>"
         "<p><a href='/'>Open Dashboard</a></p></section>"
     )
 
@@ -530,7 +531,7 @@ def _consent_page(
         "<fieldset class='oauthTools'><legend>Token tool permissions</legend>"
         "<p class='description'>Choose at least one tool for this connection. Nothing is "
         "selected by default. Only tools enabled and allowed by your administrator appear; "
-        "your Forgejo PAT may further limit access.</p>"
+        "your Forgejo account permissions and credential may further limit access.</p>"
         f"<div class='tokenToolGrid'>{tool_options}</div></fieldset>"
         "<div class='actions'><button type='submit' name='action' "
         "value='approve'>Authorize</button>"
@@ -595,9 +596,10 @@ def _consent_guidance(
         ),
         "credential_required": (
             "Set up your Forgejo credential",
-            "Your Dashboard account does not have an active, verified Forgejo PAT. "
-            "Open the Dashboard as this user, submit and verify your PAT in the Forgejo "
-            "credential section, then restart authorization. Never paste your PAT into Pi chat.",
+            "Your Dashboard account does not have an active, verified Forgejo credential. "
+            "Open the Dashboard as this user and connect with Forgejo OAuth, or submit and "
+            "verify a PAT in the Forgejo credential section. Then restart MCP authorization. "
+            "Never paste your PAT into Pi chat.",
         ),
         "tools_required": (
             "Tool access is required",

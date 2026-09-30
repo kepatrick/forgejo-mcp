@@ -48,6 +48,8 @@ type ForgejoConnection = {
 
 type ForgejoCredential = {
   configured: boolean
+  kind?: string | null
+  access_expires_at?: string | null
   id: string | null
   status: string | null
   forgejo_user_id: number | null
@@ -333,7 +335,7 @@ function UserManagement() {
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to revoke credential') }
   }
 
-  return <section className="panel"><div><p className="eyebrow">Administration</p><h2>Users</h2></div><form className="form userForm" onSubmit={create}><Field label="Display name"><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required /></Field><Field label="Dashboard username"><input minLength={3} value={username} onChange={(event) => setUsername(event.target.value)} required /></Field><Field label="Forgejo username"><input value={forgejoUsername} onChange={(event) => setForgejoUsername(event.target.value)} required /></Field><button>Create user</button></form>{error && <p className="error" role="alert">{error}</p>}{invitation && <div className="invitation"><strong>Copy this link now</strong><input readOnly value={invitation.invitation_url} onFocus={(event) => event.target.select()} /><button className="secondary" onClick={() => navigator.clipboard.writeText(invitation.invitation_url)}>Copy link</button></div>}<div className="userList">{users.map((user) => <article className="userRow" key={user.id}><div><strong>{user.display_name}</strong><span>@{user.username} · Forgejo: {user.forgejo_username} · Credential: {user.credential_status}</span></div><span className={`badge badge-${user.status}`}>{user.status}</span><div className="rowActions">{user.credential_status === 'configured' && <button className="secondary danger" onClick={() => revokeCredential(user)}>Revoke PAT</button>}{user.status !== 'disabled' && <button className="secondary" onClick={() => invite(user.id)}>Invite</button>}<button className="secondary" onClick={() => setEnabled(user, user.status === 'disabled')}>{user.status === 'disabled' ? 'Enable' : 'Disable'}</button></div></article>)}</div></section>
+  return <section className="panel"><div><p className="eyebrow">Administration</p><h2>Users</h2></div><form className="form userForm" onSubmit={create}><Field label="Display name"><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required /></Field><Field label="Dashboard username"><input minLength={3} value={username} onChange={(event) => setUsername(event.target.value)} required /></Field><Field label="Forgejo username"><input value={forgejoUsername} onChange={(event) => setForgejoUsername(event.target.value)} required /></Field><button>Create user</button></form>{error && <p className="error" role="alert">{error}</p>}{invitation && <div className="invitation"><strong>Copy this link now</strong><input readOnly value={invitation.invitation_url} onFocus={(event) => event.target.select()} /><button className="secondary" onClick={() => navigator.clipboard.writeText(invitation.invitation_url)}>Copy link</button></div>}<div className="userList">{users.map((user) => <article className="userRow" key={user.id}><div><strong>{user.display_name}</strong><span>@{user.username} · Forgejo: {user.forgejo_username} · Credential: {user.credential_status}</span></div><span className={`badge badge-${user.status}`}>{user.status}</span><div className="rowActions">{user.credential_status === 'configured' && <button className="secondary danger" onClick={() => revokeCredential(user)}>Revoke credential</button>}{user.status !== 'disabled' && <button className="secondary" onClick={() => invite(user.id)}>Invite</button>}<button className="secondary" onClick={() => setEnabled(user, user.status === 'disabled')}>{user.status === 'disabled' ? 'Enable' : 'Disable'}</button></div></article>)}</div></section>
 }
 
 function ForgejoSettings() {
@@ -385,15 +387,41 @@ function MyForgejoCredential() {
   const [credential, setCredential] = useState<ForgejoCredential | null>(null)
   const [token, setToken] = useState('')
   const [principal, setPrincipal] = useState<ForgejoPrincipal | null>(null)
+  const [oauthEnabled, setOauthEnabled] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    api<ForgejoCredential>('/api/me/credential')
-      .then(setCredential)
+    const url = new URL(window.location.href)
+    const outcome = url.searchParams.get('forgejo_oauth')
+    if (outcome) {
+      url.searchParams.delete('forgejo_oauth')
+      window.history.replaceState(null, '', url)
+    }
+    Promise.all([
+      api<ForgejoCredential>('/api/me/credential'),
+      api<{ enabled: boolean }>('/api/me/credential/oauth/status'),
+    ])
+      .then(([saved, oauth]) => {
+        setCredential(saved); setOauthEnabled(oauth.enabled)
+        if (outcome === 'connected') setMessage('Forgejo OAuth credential verified, encrypted and saved')
+        else if (outcome) setError('Forgejo authorization was denied, expired or could not be verified against your assigned account. Try connecting again or use a PAT.')
+      })
       .catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load credential status'))
   }, [])
+
+  async function connectOauth() {
+    if (credential?.configured && !window.confirm('Replace your current Forgejo credential after successful OAuth authorization?')) return
+    setSubmitting(true); setError(''); setMessage('')
+    try {
+      const result = await api<{ authorization_url: string }>('/api/me/credential/oauth/start', jsonRequest('POST'))
+      window.location.assign(result.authorization_url)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to start Forgejo authorization')
+      setSubmitting(false)
+    }
+  }
 
   async function run(action: 'test' | 'save') {
     setSubmitting(true); setError(''); setMessage(''); setPrincipal(null)
@@ -420,7 +448,19 @@ function MyForgejoCredential() {
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Unable to revoke credential') }
   }
 
-  return <section className="panel"><div><p className="eyebrow">Personal access</p><h2>My Forgejo credential</h2></div><p>Your PAT is verified against your assigned Forgejo username, encrypted, and never shown again.</p>{credential?.configured && <div className="credentialSummary"><strong>{credential.forgejo_username}</strong><span>Forgejo user ID {credential.forgejo_user_id}</span><span>Verified {credential.verified_at ? new Date(credential.verified_at).toLocaleString() : ''}</span></div>}<div className="form"><Field label={credential?.configured ? 'New PAT for rotation' : 'Forgejo personal access token'}><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" required /></Field><div className="rowActions"><button className="secondary" disabled={submitting || !token} onClick={() => run('test')}>Test PAT</button><button disabled={submitting || !token} onClick={() => run('save')}>{credential?.configured ? 'Verify and rotate' : 'Verify and save'}</button>{credential?.configured && <button className="secondary danger" onClick={revoke}>Revoke saved PAT</button>}</div></div>{principal && <p className="connection">Verified Forgejo principal: <strong>{principal.forgejo_username}</strong> ({principal.forgejo_user_id})</p>}{message && <p className="success" role="status">{message}</p>}{error && <p className="error" role="alert">{error}</p>}</section>
+  return <section className="panel">
+    <div><p className="eyebrow">Personal access</p><h2>My Forgejo credential</h2></div>
+    <p>Connect with Forgejo OAuth or submit a PAT. Both are verified against your assigned Forgejo identity and stored encrypted.</p>
+    {credential?.configured && <div className="credentialSummary"><strong>{credential.forgejo_username}</strong><span>Forgejo user ID {credential.forgejo_user_id} · {credential.kind === 'oauth' ? 'OAuth' : 'PAT'}</span><span>Verified {credential.verified_at ? new Date(credential.verified_at).toLocaleString() : ''}</span>{credential.kind === 'oauth' && <span>Access expires {credential.access_expires_at ? new Date(credential.access_expires_at).toLocaleString() : ''}; refreshed automatically when tools are used.</span>}</div>}
+    <div className="form"><button disabled={submitting || !oauthEnabled} onClick={connectOauth}>{credential?.configured ? 'Reconnect with Forgejo OAuth' : 'Connect with Forgejo OAuth'}</button>
+      {!oauthEnabled && <p>Forgejo OAuth is not configured by the administrator. You can still use a PAT below.</p>}
+      <p>Forgejo OAuth does not provide fine-grained API scopes. Use a scoped PAT if you need narrower Forgejo access. MCP tool permissions remain enforced.</p>
+      <Field label={credential?.configured ? 'Alternative: new PAT for rotation' : 'Alternative: Forgejo personal access token'}><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" required /></Field>
+      <div className="rowActions"><button className="secondary" disabled={submitting || !token} onClick={() => run('test')}>Test PAT</button><button disabled={submitting || !token} onClick={() => run('save')}>{credential?.configured ? 'Verify and rotate' : 'Verify and save'}</button>{credential?.configured && <button className="secondary danger" onClick={revoke}>Revoke saved credential</button>}</div>
+    </div>
+    <p>Local revocation removes the stored access and refresh tokens. For OAuth, also revoke the application authorization in Forgejo settings.</p>
+    {principal && <p className="connection">Verified Forgejo principal: <strong>{principal.forgejo_username}</strong> ({principal.forgejo_user_id})</p>}{message && <p className="success" role="status">{message}</p>}{error && <p className="error" role="alert">{error}</p>}
+  </section>
 }
 
 function MyMcpTokens({ onTokensChanged }: { onTokensChanged: () => void }) {

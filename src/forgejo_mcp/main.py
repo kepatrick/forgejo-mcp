@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
 
 from forgejo_mcp.api import (
@@ -22,7 +23,7 @@ from forgejo_mcp.api import (
     tools_user_allowance_router,
     users_router,
 )
-from forgejo_mcp.api.errors import application_error_handler
+from forgejo_mcp.api.errors import application_error_handler, request_validation_error_handler
 from forgejo_mcp.api.oauth import create_oauth_routes
 from forgejo_mcp.application.bootstrap_service import bootstrap_admin
 from forgejo_mcp.application.errors import ApplicationError
@@ -94,6 +95,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.add_middleware(RequestObservabilityMiddleware)
     application.add_middleware(SecurityHeadersMiddleware)
     application.add_exception_handler(ApplicationError, application_error_handler)
+    application.add_exception_handler(RequestValidationError, request_validation_error_handler)
     application.include_router(auth_router)
     application.include_router(forgejo_credential_admin_router)
     application.include_router(forgejo_credential_me_router)

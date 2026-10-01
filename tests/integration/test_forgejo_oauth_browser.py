@@ -83,7 +83,7 @@ def test_forgejo_cross_site_callback_uses_only_short_lived_browser_binding(cfg, 
     )
     settings = type(cfg)(**values)
 
-    async def exchange(self, *, base_url, verify_tls, values):
+    async def exchange(self, *, base_url, verify_tls, values, configuration=None):
         assert base_url == provider_url and values["code"] == "browser-code"
         return ForgejoOAuthTokens(
             access_token="browser-access",

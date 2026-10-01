@@ -13,7 +13,7 @@ from forgejo_mcp.application.errors import (
 )
 from forgejo_mcp.config import Settings
 from forgejo_mcp.credentials import CredentialCipher, CredentialKeyError
-from forgejo_mcp.forgejo.oauth import ForgejoOAuthClient
+from forgejo_mcp.forgejo.oauth import ForgejoOAuthClient, ForgejoOAuthClientConfiguration
 from forgejo_mcp.observability.logging import OAuthCallbackAccessFilter
 
 
@@ -88,6 +88,34 @@ async def test_rejected_response_is_never_retried_or_logged(status, body, header
     assert len(seen) == 1
     assert "secret-body" not in caplog.text and "private-code" not in caplog.text
     assert "secret-access" not in caplog.text and "secret-rejected" not in caplog.text
+
+
+async def test_explicit_public_configuration_never_inherits_environment_secret(tmp_path):
+    cfg = settings(
+        forgejo_oauth_client_id="environment-client",
+        forgejo_oauth_redirect_url="https://mcp.example/api/me/credential/oauth/callback",
+        forgejo_oauth_client_secret_file=tmp_path / "must-not-be-read",
+    )
+
+    def handler(request):
+        values = parse_qs(request.content.decode())
+        assert values["client_id"] == ["dashboard-client"]
+        assert "client_secret" not in values
+        return httpx.Response(
+            200,
+            stream=httpx.ByteStream(
+                b'{"access_token":"access","refresh_token":"refresh","token_type":"Bearer","expires_in":3600}',
+            ),
+        )
+
+    await ForgejoOAuthClient(cfg, transport=httpx.MockTransport(handler)).exchange(
+        base_url="https://git.example.test",
+        verify_tls=True,
+        values={"code": "test"},
+        configuration=ForgejoOAuthClientConfiguration(
+            "dashboard-client", cfg.forgejo_oauth_redirect_url, None, "revision"
+        ),
+    )
 
 
 async def test_allowlist_prevents_network_access():

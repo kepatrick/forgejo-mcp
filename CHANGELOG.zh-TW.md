@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+### 新增
+
+- Admin Dashboard 可設定 Forgejo OAuth Client ID、加密且不回傳原文的 Client Secret、public／confidential client 模式與 MCP 對外 base URL；callback 路徑固定，旁邊顯示可複製的完整 redirect URL，儲存後立即生效，不需重啟（migration 0016）。
+- 加入 admin／CSRF 驗證、無密鑰原文的設定稽核紀錄、資料庫設定優先於環境變數，以及設定變更後要求重新開始尚未完成的授權；保留既有 PAT 與 grants。
+
 ## [0.3.0] - 2026-09-30
 
 ### 新增

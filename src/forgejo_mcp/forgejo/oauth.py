@@ -1,6 +1,7 @@
 """Bounded, no-retry OAuth token exchange against the configured Forgejo only."""
 
 import logging
+from dataclasses import dataclass
 from typing import Literal
 
 import httpx
@@ -15,6 +16,15 @@ from forgejo_mcp.config import Settings
 
 logger = logging.getLogger(__name__)
 MAX_TOKEN_RESPONSE_BYTES = 64 * 1024
+FORGEJO_OAUTH_CALLBACK_PATH = "/api/me/credential/oauth/callback"
+
+
+@dataclass(frozen=True)
+class ForgejoOAuthClientConfiguration:
+    client_id: str
+    redirect_url: str
+    client_secret: SecretStr | None
+    revision: str
 
 
 class ForgejoOAuthTokens(BaseModel):
@@ -50,6 +60,7 @@ class ForgejoOAuthClient:
         base_url: str,
         verify_tls: bool,
         values: dict[str, str],
+        configuration: ForgejoOAuthClientConfiguration | None = None,
     ) -> ForgejoOAuthTokens:
         if not self.settings.permits_forgejo_base_url(base_url):
             logger.warning(
@@ -62,8 +73,18 @@ class ForgejoOAuthClient:
         if not base_url.startswith("https://") and not self.settings.allow_insecure_forgejo_http:
             logger.warning("forgejo_oauth_exchange_rejected", extra={"reason": "http_policy"})
             raise ConfigurationUnavailable("Forgejo OAuth requires HTTPS")
-        data = {**values, "client_id": self.settings.forgejo_oauth_client_id or ""}
-        secret_file = self.settings.forgejo_oauth_client_secret_file
+        data = {
+            **values,
+            "client_id": configuration.client_id
+            if configuration
+            else self.settings.forgejo_oauth_client_id or "",
+        }
+        if configuration is not None and configuration.client_secret is not None:
+            data["client_secret"] = configuration.client_secret.get_secret_value()
+        # Explicit database public-client settings must never inherit an environment secret.
+        secret_file = (
+            self.settings.forgejo_oauth_client_secret_file if configuration is None else None
+        )
         if secret_file is not None:
             try:
                 secret = secret_file.read_text(encoding="utf-8").strip()

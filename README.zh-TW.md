@@ -21,6 +21,7 @@ Forgejo MCP 是一套自架的 [Model Context Protocol](https://modelcontextprot
 - 使用者透過已驗證且限制權限範圍的 Forgejo PAT，以自己的 Forgejo 身分操作。
 - 使用 AES-256-GCM 加密儲存 PAT，MCP token 只顯示一次。
 - 透過 Web Dashboard 管理 Forgejo 連線、使用者、權限及稽核紀錄。
+- Admin 可在 Forgejo OAuth settings 設定 Client ID、加密儲存的 Client Secret 與 MCP 對外 base URL；callback 路徑固定，旁邊顯示可複製的完整 redirect URL，儲存後立即生效，不需重啟。
 - 提供遮蔽敏感資訊的 invocation audit、structured logs、health endpoints 與 Prometheus metrics。
 
 ## 為公司設計的 MCP 治理層

@@ -14,6 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from forgejo_mcp.application.errors import ConfigurationUnavailable, ValidationFailed
 from forgejo_mcp.application.forgejo_credential_service import ForgejoCredentialService
+from forgejo_mcp.application.forgejo_oauth_config_service import ForgejoOAuthConfigService
 from forgejo_mcp.auth.passwords import normalize_username
 from forgejo_mcp.auth.tokens import hash_token
 from forgejo_mcp.config import Settings
@@ -29,7 +30,7 @@ from forgejo_mcp.db.models import (
     User,
 )
 from forgejo_mcp.forgejo.client import ForgejoOAuthToken
-from forgejo_mcp.forgejo.oauth import ForgejoOAuthClient
+from forgejo_mcp.forgejo.oauth import ForgejoOAuthClient, ForgejoOAuthClientConfiguration
 
 logger = logging.getLogger(__name__)
 
@@ -40,18 +41,21 @@ class ForgejoOAuthService:
         self.settings = settings
         self.credentials = ForgejoCredentialService(session, settings)
         self.client = ForgejoOAuthClient(settings)
+        self.configurations = ForgejoOAuthConfigService(session, settings)
 
     @staticmethod
     def reject(reason: str) -> None:
         logger.warning("forgejo_oauth_link_rejected", extra={"reason": reason})
         raise ValidationFailed("Forgejo authorization is unavailable; sign in and reconnect")
 
-    async def configuration(self) -> ForgejoInstance:
+    async def configuration(
+        self, *, lock: bool = False
+    ) -> tuple[ForgejoInstance, ForgejoOAuthClientConfiguration]:
         instance = await self.credentials.instances.primary()
-        if (
-            not self.settings.forgejo_oauth_client_id
-            or not self.settings.forgejo_oauth_redirect_url
-        ):
+        configuration = await self.configurations.resolve(lock=lock)
+        if instance is not None and lock:
+            await self.session.refresh(instance, with_for_update={"read": True})
+        if configuration is None:
             logger.warning(
                 "forgejo_oauth_configuration_unavailable", extra={"reason": "not_configured"}
             )
@@ -71,7 +75,8 @@ class ForgejoOAuthService:
                 "forgejo_oauth_configuration_unavailable", extra={"reason": "tls_policy"}
             )
             raise ConfigurationUnavailable("Forgejo OAuth requires a secure Forgejo connection")
-        return instance
+        assert configuration is not None
+        return instance, configuration
 
     async def require_session(self, current: Session) -> None:
         active = await self.session.scalar(
@@ -121,7 +126,7 @@ class ForgejoOAuthService:
 
     async def start(self, current: Session) -> tuple[str, str]:
         await self.require_session(current)
-        instance = await self.configuration()
+        instance, configuration = await self.configuration()
         assert current.account.user_id is not None
         state = secrets.token_urlsafe(32)
         browser_token = secrets.token_urlsafe(32)
@@ -152,8 +157,9 @@ class ForgejoOAuthService:
                 session_id=current.id,
                 instance_id=instance.id,
                 base_url=instance.base_url,
-                client_id=self.settings.forgejo_oauth_client_id,
-                redirect_url=self.settings.forgejo_oauth_redirect_url,
+                client_id=configuration.client_id,
+                redirect_url=configuration.redirect_url,
+                config_revision=configuration.revision,
                 encrypted_verifier=encrypted.ciphertext,
                 nonce=encrypted.nonce,
                 key_version=encrypted.key_version,
@@ -167,8 +173,8 @@ class ForgejoOAuthService:
             + urlencode(
                 {
                     "response_type": "code",
-                    "client_id": self.settings.forgejo_oauth_client_id,
-                    "redirect_uri": self.settings.forgejo_oauth_redirect_url,
+                    "client_id": configuration.client_id,
+                    "redirect_uri": configuration.redirect_url,
                     "state": state,
                     "code_challenge": challenge,
                     "code_challenge_method": "S256",
@@ -187,7 +193,7 @@ class ForgejoOAuthService:
         ):
             self.reject("invalid_state")
         await self.require_session(current)
-        instance = await self.configuration()
+        instance, configuration = await self.configuration()
         flow = await self.session.scalar(
             select(ForgejoOAuthRequest)
             .where(
@@ -202,8 +208,9 @@ class ForgejoOAuthService:
             or flow.expires_at <= datetime.now(UTC)
             or flow.instance_id != instance.id
             or flow.base_url != instance.base_url
-            or flow.client_id != self.settings.forgejo_oauth_client_id
-            or flow.redirect_url != self.settings.forgejo_oauth_redirect_url
+            or flow.client_id != configuration.client_id
+            or flow.redirect_url != configuration.redirect_url
+            or flow.config_revision != configuration.revision
         ):
             self.reject("expired_or_unbound_state")
         assert flow is not None and current.account.user_id is not None
@@ -229,9 +236,10 @@ class ForgejoOAuthService:
             values={
                 "grant_type": "authorization_code",
                 "code": code,
-                "redirect_uri": self.settings.forgejo_oauth_redirect_url or "",
+                "redirect_uri": configuration.redirect_url,
                 "code_verifier": verifier,
             },
+            configuration=configuration,
         )
         await self.require_session(current)
         user = await self.credentials.get_user(current.account.user_id)
@@ -241,11 +249,13 @@ class ForgejoOAuthService:
             user_id=current.account.user_id,
             token=tokens.access_token.get_secret_value(),
             oauth_tokens=tokens,
+            oauth_configuration=configuration,
+            oauth_instance_url=instance.base_url,
         )
         logger.info("forgejo_oauth_link_completed", extra={"user_id": str(current.account.user_id)})
 
     async def access_token(self, user_id: uuid.UUID) -> ForgejoOAuthToken:
-        instance = await self.configuration()
+        instance, configuration = await self.configuration(lock=True)
         credential = await self.session.scalar(
             select(ForgejoCredential)
             .where(
@@ -261,7 +271,7 @@ class ForgejoOAuthService:
             or credential.kind != "oauth"
             or (
                 credential.oauth_base_url != instance.base_url
-                or credential.oauth_client_id != self.settings.forgejo_oauth_client_id
+                or credential.oauth_client_id != configuration.client_id
                 or credential.encrypted_token is None
                 or credential.nonce is None
             )
@@ -301,6 +311,7 @@ class ForgejoOAuthService:
                     "grant_type": "refresh_token",
                     "refresh_token": refresh,
                 },
+                configuration=configuration,
             )
             principal = await self.credentials.client.get_current_user(
                 base_url=instance.base_url,

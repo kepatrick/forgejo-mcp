@@ -385,6 +385,94 @@ function ForgejoSettings() {
   return <section className="panel"><div><p className="eyebrow">External service</p><h2>Forgejo instance</h2></div><p>Connect this MCP server to the company Forgejo service. User credentials are configured separately.</p><div className="form userForm"><Field label="Display name"><input value={displayName} onChange={(event) => setDisplayName(event.target.value)} required /></Field><Field label="Base URL"><input type="url" placeholder="https://git.company.internal" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} required /></Field><label className="checkbox"><input type="checkbox" checked={verifyTls} onChange={(event) => setVerifyTls(event.target.checked)} /><span>Verify TLS certificate</span></label><div className="rowActions"><button className="secondary" disabled={submitting || !baseUrl} onClick={() => run('test')}>Test connection</button><button disabled={submitting || !baseUrl || !displayName} onClick={() => run('save')}>Test and save</button></div></div>{connection && <p className="connection">Connected to <strong>{connection.base_url}</strong> · version {connection.version}</p>}{message && <p className="success" role="status">{message}</p>}{error && <p className="error" role="alert">{error}</p>}</section>
 }
 
+type ForgejoOAuthSettings = {
+  enabled: boolean
+  client_id: string
+  client_type: 'public' | 'confidential'
+  base_url: string
+  redirect_url: string
+  secret_configured: boolean
+  source: 'dashboard' | 'environment' | 'unconfigured'
+}
+
+const forgejoCallbackPath = '/api/me/credential/oauth/callback'
+
+function forgejoRedirectPreview(baseUrl: string): string {
+  try {
+    const url = new URL(baseUrl.trim())
+    if (!['http:', 'https:'].includes(url.protocol) || url.pathname !== '/' || url.search || url.hash || url.username || url.password) return ''
+    url.hostname = url.hostname.replace(/\.+$/, '')
+    return url.origin + forgejoCallbackPath
+  } catch { return '' }
+}
+
+function ForgejoOAuthSettingsPanel() {
+  const [enabled, setEnabled] = useState(false)
+  const [clientId, setClientId] = useState('')
+  const [clientType, setClientType] = useState<'public' | 'confidential'>('confidential')
+  const [baseUrl, setBaseUrl] = useState(() => window.location.origin)
+  const [clientSecret, setClientSecret] = useState('')
+  const [secretConfigured, setSecretConfigured] = useState(false)
+  const [source, setSource] = useState<ForgejoOAuthSettings['source']>('unconfigured')
+  const [message, setMessage] = useState('')
+  const [error, setError] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const redirectUrl = forgejoRedirectPreview(baseUrl)
+
+  function loaded(settings: ForgejoOAuthSettings) {
+    setEnabled(settings.enabled); setClientId(settings.client_id); setClientType(settings.client_type)
+    setBaseUrl(settings.base_url || window.location.origin)
+    setSecretConfigured(settings.secret_configured); setSource(settings.source); setClientSecret('')
+  }
+
+  useEffect(() => {
+    api<ForgejoOAuthSettings>('/api/forgejo/instance/oauth')
+      .then(loaded)
+      .catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load Forgejo OAuth settings'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  async function save(event: FormEvent) {
+    event.preventDefault(); setSubmitting(true); setError(''); setMessage('')
+    try {
+      const settings = await api<ForgejoOAuthSettings>('/api/forgejo/instance/oauth', jsonRequest('PUT', {
+        enabled, client_id: clientId, client_type: clientType, base_url: redirectUrl.slice(0, -forgejoCallbackPath.length),
+        ...(clientType === 'confidential' && clientSecret ? { client_secret: clientSecret } : {}),
+      }))
+      loaded(settings)
+      setMessage('Forgejo OAuth settings saved. Changes take effect without restarting the App; pending authorizations must be started again.')
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to save Forgejo OAuth settings')
+    } finally { setSubmitting(false) }
+  }
+
+  async function copyRedirect() {
+    try { await navigator.clipboard.writeText(redirectUrl); setMessage('Redirect URL copied') }
+    catch { setError('Clipboard unavailable. Select and copy the redirect URL manually.') }
+  }
+
+  return <section className="panel">
+    <div><p className="eyebrow">Application authorization</p><h2>Forgejo OAuth settings</h2></div>
+    <p>Register one application in Forgejo user settings → Applications, then configure it here for all Dashboard users. Do not use instance-wide admin applications.</p>
+    {source === 'environment' && <p>Deployment defaults are in use. Saving here will override those settings, including when disabled.</p>}
+    {source === 'dashboard' && <p>Dashboard settings are active and override deployment variables.</p>}
+    <form className="form" onSubmit={save}>
+      <label className="checkbox"><input type="checkbox" checked={enabled} disabled={loading} onChange={(event) => setEnabled(event.target.checked)} /><span>Enable Forgejo OAuth linking</span></label>
+      <Field label="MCP public base URL"><input type="url" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://mcp.example.com" required /></Field>
+      <p>This is the public URL of this MCP Dashboard, not the Forgejo URL. Enter only scheme and host/port. Use HTTPS except for local non-production testing. The callback path is fixed.</p>
+      <div className="credentialSummary"><Field label="Forgejo redirect URL"><input readOnly value={redirectUrl} onFocus={(event) => event.target.select()} /></Field><button type="button" className="secondary" disabled={!redirectUrl} onClick={copyRedirect}>Copy redirect URL</button><span>Register this exact redirect URL in Forgejo. All users share it; they do not need separate applications.</span></div>
+      {!redirectUrl && <p className="error">Use a base URL without a path, credentials, query or fragment.</p>}
+      <Field label="Forgejo OAuth Client ID"><input value={clientId} maxLength={128} onChange={(event) => setClientId(event.target.value)} required={enabled || !!clientSecret} autoComplete="off" /></Field>
+      <Field label="OAuth client type"><select aria-label="OAuth client type" value={clientType} onChange={(event) => { setClientType(event.target.value as 'public' | 'confidential'); setClientSecret('') }}><option value="confidential">Confidential — client secret required</option><option value="public">Public — PKCE, no client secret</option></select></Field>
+      {clientType === 'confidential' ? <><Field label="Forgejo OAuth Client Secret"><input type="password" value={clientSecret} onChange={(event) => setClientSecret(event.target.value)} autoComplete="off" placeholder={secretConfigured ? 'Saved — leave blank to keep' : 'Paste the generated client secret'} /></Field><p>The secret is stored encrypted and never returned. Leave blank to keep it; enter a new secret if the Client ID changes.</p></> : <p>Public clients use PKCE S256. Saving this mode removes any stored client secret and does not inherit an environment secret.</p>}
+      <button disabled={loading || submitting || !redirectUrl}>Save Forgejo OAuth settings</button>
+    </form>
+    <p>Forgejo OAuth does not implement fine-grained API scopes. MCP tool policies still apply; scoped PATs remain available. Disabling linking stops use of OAuth credentials but does not revoke Forgejo authorization upstream.</p>
+    {message && <p className="success" role="status">{message}</p>}{error && <p className="error" role="alert">{error}</p>}
+  </section>
+}
+
 function MyForgejoCredential() {
   const [credential, setCredential] = useState<ForgejoCredential | null>(null)
   const [token, setToken] = useState('')
@@ -455,7 +543,7 @@ function MyForgejoCredential() {
     <p>Connect with Forgejo OAuth or submit a PAT. Both are verified against your assigned Forgejo identity and stored encrypted.</p>
     {credential?.configured && <div className="credentialSummary"><strong>{credential.forgejo_username}</strong><span>Forgejo user ID {credential.forgejo_user_id} · {credential.kind === 'oauth' ? 'OAuth' : 'PAT'}</span><span>Verified {credential.verified_at ? new Date(credential.verified_at).toLocaleString() : ''}</span>{credential.kind === 'oauth' && <span>Access expires {credential.access_expires_at ? new Date(credential.access_expires_at).toLocaleString() : ''}; refreshed automatically when tools are used.</span>}</div>}
     <div className="form"><button disabled={submitting || !oauthEnabled} onClick={connectOauth}>{credential?.configured ? 'Reconnect with Forgejo OAuth' : 'Connect with Forgejo OAuth'}</button>
-      {!oauthEnabled && <p>Forgejo OAuth is not configured by the administrator. You can still use a PAT below.</p>}
+      {!oauthEnabled && <p>Forgejo OAuth linking is not enabled. Ask an administrator to configure it in Forgejo OAuth settings. You can still use a PAT below.</p>}
       <p>Forgejo OAuth does not provide fine-grained API scopes. Use a scoped PAT if you need narrower Forgejo access. MCP tool permissions remain enforced.</p>
       <Field label={credential?.configured ? 'Alternative: new PAT for rotation' : 'Alternative: Forgejo personal access token'}><input type="password" value={token} onChange={(event) => setToken(event.target.value)} autoComplete="off" required /></Field>
       <div className="rowActions"><button className="secondary" disabled={submitting || !token} onClick={() => run('test')}>Test PAT</button><button disabled={submitting || !token} onClick={() => run('save')}>{credential?.configured ? 'Verify and rotate' : 'Verify and save'}</button>{credential?.configured && <button className="secondary danger" onClick={revoke}>Revoke saved credential</button>}</div>
@@ -692,7 +780,7 @@ function Dashboard({ account, onAccountChanged, onLogout }: { account: Account; 
     setShowAccountSecurity(false)
     setPasswordMessage('Password updated. Other active sessions were revoked.')
   }
-  return <main className="dashboard"><header className="topbar"><div><span className="brand">Forgejo MCP</span><span className="role">{account.role}</span></div><div className="actions"><span>{account.username}</span><button className="secondary" onClick={() => { setPasswordMessage(''); setShowAccountSecurity(true) }}>Change password</button><button className="secondary" onClick={logout}>Sign out</button></div></header><div className="content"><section className="hero"><p className="eyebrow">Internal developer platform</p><h1>Dashboard</h1><p className="description">Manage the Forgejo connection, internal identities, credentials, and MCP client access.</p></section>{passwordMessage && <p className="success successNotice" role="status">{passwordMessage}</p>}{account.role === 'admin' ? <><ForgejoSettings /><UserManagement /><AdminTools /><AdminMcpTokens /><InvocationAudit role="admin" /></> : <><MyForgejoCredential /><MyMcpTokens onTokensChanged={() => setTokenRevision((current) => current + 1)} /><MyToolPermissions tokenRevision={tokenRevision} /><InvocationAudit role="user" /></>}</div>{showAccountSecurity && <AccountSecurity account={account} onChanged={passwordChanged} onClose={() => setShowAccountSecurity(false)} />}</main>
+  return <main className="dashboard"><header className="topbar"><div><span className="brand">Forgejo MCP</span><span className="role">{account.role}</span></div><div className="actions"><span>{account.username}</span><button className="secondary" onClick={() => { setPasswordMessage(''); setShowAccountSecurity(true) }}>Change password</button><button className="secondary" onClick={logout}>Sign out</button></div></header><div className="content"><section className="hero"><p className="eyebrow">Internal developer platform</p><h1>Dashboard</h1><p className="description">Manage the Forgejo connection, internal identities, credentials, and MCP client access.</p></section>{passwordMessage && <p className="success successNotice" role="status">{passwordMessage}</p>}{account.role === 'admin' ? <><ForgejoSettings /><ForgejoOAuthSettingsPanel /><UserManagement /><AdminTools /><AdminMcpTokens /><InvocationAudit role="admin" /></> : <><MyForgejoCredential /><MyMcpTokens onTokensChanged={() => setTokenRevision((current) => current + 1)} /><MyToolPermissions tokenRevision={tokenRevision} /><InvocationAudit role="user" /></>}</div>{showAccountSecurity && <AccountSecurity account={account} onChanged={passwordChanged} onClose={() => setShowAccountSecurity(false)} />}</main>
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label><span>{label}</span>{children}</label> }

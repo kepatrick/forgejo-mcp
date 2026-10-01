@@ -12,6 +12,7 @@ from forgejo_mcp.application.errors import (
     NotFound,
     ValidationFailed,
 )
+from forgejo_mcp.application.forgejo_oauth_config_service import ForgejoOAuthConfigService
 from forgejo_mcp.auth.passwords import normalize_username
 from forgejo_mcp.config import Settings
 from forgejo_mcp.credentials import CredentialCipher, CredentialKeyError
@@ -23,7 +24,7 @@ from forgejo_mcp.db.repositories import (
     UserRepository,
 )
 from forgejo_mcp.forgejo.client import ForgejoClient, ForgejoOAuthToken
-from forgejo_mcp.forgejo.oauth import ForgejoOAuthTokens
+from forgejo_mcp.forgejo.oauth import ForgejoOAuthClientConfiguration, ForgejoOAuthTokens
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,8 @@ class ForgejoCredentialService:
         user_id: uuid.UUID,
         token: str,
         oauth_tokens: ForgejoOAuthTokens | None = None,
+        oauth_configuration: ForgejoOAuthClientConfiguration | None = None,
+        oauth_instance_url: str | None = None,
     ) -> ForgejoCredential:
         principal = await self.verify(
             actor_account_id=actor_account_id,
@@ -154,6 +157,28 @@ class ForgejoCredentialService:
             token=token,
             oauth=oauth_tokens is not None,
         )
+        effective_oauth_configuration = None
+        if oauth_tokens is not None:
+            effective_oauth_configuration = await ForgejoOAuthConfigService(
+                self.session, self.settings
+            ).resolve(lock=True)
+            instance = await self.instances.primary()
+            if instance is not None:
+                await self.session.refresh(instance, with_for_update={"read": True})
+            if (
+                effective_oauth_configuration is None
+                or instance is None
+                or (
+                    oauth_configuration is not None
+                    and effective_oauth_configuration != oauth_configuration
+                )
+                or (oauth_instance_url is not None and instance.base_url != oauth_instance_url)
+            ):
+                logger.warning(
+                    "forgejo_oauth_credential_save_rejected",
+                    extra={"reason": "configuration_changed", "user_id": str(user_id)},
+                )
+                raise ConfigurationUnavailable("Forgejo OAuth configuration changed; reconnect")
         cipher = self.cipher()
         encrypted = cipher.encrypt(token.strip(), user_id)
         now = datetime.now(UTC)
@@ -188,7 +213,8 @@ class ForgejoCredentialService:
             credential.refresh_nonce = refresh.nonce
             credential.access_expires_at = now + timedelta(seconds=oauth_tokens.expires_in)
             credential.oauth_base_url = instance.base_url
-            credential.oauth_client_id = self.settings.forgejo_oauth_client_id
+            assert effective_oauth_configuration is not None
+            credential.oauth_client_id = effective_oauth_configuration.client_id
         self.credentials.add(credential)
         try:
             await self.session.flush()

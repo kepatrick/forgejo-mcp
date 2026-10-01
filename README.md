@@ -25,6 +25,7 @@ Users connect with their own scoped Forgejo personal access tokens (PATs), or op
 - Per-user Forgejo identity through a verified, scoped PAT or opt-in Forgejo OAuth.
 - AES-256-GCM encryption for stored Forgejo access/refresh credentials and show-once MCP tokens.
 - A web Dashboard for Forgejo configuration, users, permissions and audit records.
+- Admin-configured Forgejo OAuth Client ID, encrypted Client Secret and public base URL, with a fixed, copyable redirect URL and immediate application without a restart.
 - Redacted invocation auditing, structured logs, health endpoints and Prometheus metrics.
 
 ## Governance for company use

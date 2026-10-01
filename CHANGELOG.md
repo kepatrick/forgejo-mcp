@@ -8,6 +8,11 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Added
+
+- Admin Dashboard Forgejo OAuth settings: Client ID, encrypted/write-only Client Secret, public/confidential client mode and MCP public base URL with a fixed, copyable redirect URL; apply immediately without restarting (migration 0016).
+- Admin/CSRF protection, audited settings changes, explicit database-over-environment precedence and pending-authorization invalidation on configuration changes; preserve existing PATs and grants.
+
 ## [0.3.0] - 2026-09-30
 
 ### Added

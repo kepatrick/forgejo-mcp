@@ -62,11 +62,14 @@ def cfg(tmp_path):
 
 @pytest.fixture
 def provider(monkeypatch):
-    seen = {"exchanges": [], "identity": "OAuthUser", "principals": []}
+    seen = {"exchanges": [], "identity": "OAuthUser", "principals": [], "configurations": []}
 
-    async def exchange(self, *, base_url, verify_tls, values):
+    async def exchange(self, *, base_url, verify_tls, values, configuration=None):
         assert base_url == BASE and verify_tls is True
         seen["exchanges"].append(values)
+        seen["configurations"].append(configuration)
+        if seen.get("on_exchange"):
+            await seen["on_exchange"]()
         if values["grant_type"] == "refresh_token":
             await asyncio.sleep(0.05)
         n = len(seen["exchanges"])

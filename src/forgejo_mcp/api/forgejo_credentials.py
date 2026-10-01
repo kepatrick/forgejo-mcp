@@ -9,6 +9,7 @@ from starlette.responses import JSONResponse, RedirectResponse
 
 from forgejo_mcp.api.dependencies import ForgejoCredentialServiceDep
 from forgejo_mcp.application.errors import ApplicationError
+from forgejo_mcp.application.forgejo_oauth_config_service import ForgejoOAuthConfigService
 from forgejo_mcp.application.forgejo_oauth_service import ForgejoOAuthService
 from forgejo_mcp.auth.session import SESSION_COOKIE
 from forgejo_mcp.auth.tokens import hash_token
@@ -19,10 +20,10 @@ from forgejo_mcp.authorization.policies import (
 )
 from forgejo_mcp.credentials import CredentialKeyError
 from forgejo_mcp.db.models import ForgejoCredential
+from forgejo_mcp.forgejo.oauth import FORGEJO_OAUTH_CALLBACK_PATH
 
 logger = logging.getLogger(__name__)
 FORGEJO_OAUTH_SESSION_COOKIE = "fmcp_forgejo_oauth_session"
-FORGEJO_OAUTH_CALLBACK_PATH = "/api/me/credential/oauth/callback"
 
 me_router = APIRouter(prefix="/api/me/credential", tags=["forgejo-credential"])
 admin_router = APIRouter(prefix="/api/users", tags=["forgejo-credential-admin"])
@@ -71,10 +72,10 @@ async def forgejo_oauth_status(
 ) -> dict[str, bool]:
     instance = await service.instances.primary()
     settings = service.settings
+    configuration = await ForgejoOAuthConfigService(service.session, settings).public()
     return {
         "enabled": bool(
-            settings.forgejo_oauth_client_id
-            and settings.forgejo_oauth_redirect_url
+            configuration.enabled
             and instance
             and settings.permits_forgejo_base_url(instance.base_url)
         )

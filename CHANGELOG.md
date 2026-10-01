@@ -10,14 +10,40 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ### Added
 
-- Admin Dashboard Forgejo OAuth settings: Client ID, encrypted/write-only Client Secret, public/confidential client mode and MCP public base URL with a fixed, copyable redirect URL; apply immediately without restarting (migration 0016).
-- Admin/CSRF protection, audited settings changes, explicit database-over-environment precedence and pending-authorization invalidation on configuration changes; preserve existing PATs and grants.
+- Optional Forgejo account OAuth linking, separate from MCP-client OAuth: session-bound PKCE S256, encrypted per-user access/refresh tokens, identity verification and serialized lazy refresh; scoped PATs remain supported (migration 0015).
+- Admin Dashboard OAuth application settings: Client ID, encrypted/write-only Client Secret, matching Public/Confidential mode and MCP public base URL with a fixed, copyable redirect URL; apply without restarting (migration 0016).
+- Explicit MCP consent Select all / Clear selection controls for currently permitted tools; no preselection, automatic approval or expansion of existing grants.
+- English/Traditional Chinese setup, troubleshooting, permission-boundary and revocation guides; update administrator/user workflows.
+
+### Security
+
+- Update the frontend development dependency `brace-expansion` to a patched release; npm audit reports no known vulnerabilities after the targeted lockfile update.
+- Require admin/CSRF verification for application settings, audit without secret values, bind pending authorizations to configuration revisions and recheck before replacing credentials.
+- Keep Strict Dashboard cookies with a separate one-use callback binding; verify assigned username/numeric identity, pin Forgejo destinations, bound token responses and redact callback queries.
+- Distinguish OAuth Bearer credentials from PAT authentication, use separate encryption purposes and preserve credential/grant boundaries during refresh.
+
+### Fixed
+
+- Keep configuration read locks shared between users while serializing settings changes and per-user refresh.
+- Separate bulk-selection buttons from the consent tool list on desktop and mobile.
+
+### Deployment and upgrade notes
+
+- Supported Forgejo target remains 16.0.3; 16.0.2 is comparison-only. A manual read on an older instance is not a compatibility guarantee.
+- Schema head is `20261001_0016`. Back up PostgreSQL, deployment configuration and credential keys; stop old App workers and upgrade using matching release code. Do not regenerate encryption keys or use `down -v`.
+- Migrations 0015/0016 preserve existing PATs and grants on upgrade; restart old pending Forgejo authorization attempts. Saved Dashboard settings override deployment defaults, including an explicit disabled setting.
+- Downgrade revokes local OAuth credentials rather than treating them as PATs; 0016 also deletes pending attempts and Dashboard client settings. Use a coordinated backup/rollback plan, and unset deployment defaults if linking must remain disabled.
+
+### Known limitations
+
+- Forgejo OAuth has no fine-grained API scopes. MCP permissions are tool-level, not a separate repository/path allowlist; use scoped PATs or restrict Forgejo account membership for narrower upstream access.
+- Removing local credentials/configuration or stopping the server does not revoke Forgejo application approval. MCP and Forgejo grants have separate lifecycles.
+- Existing CIMD DNS re-resolution/rebinding risk and non-ASCII `/token` resource validation returning HTTP 500 remain unresolved; keep CIMD disabled unless required and follow `docs/security/oauth-2.1.md`.
 
 ## [0.3.0] - 2026-09-30
 
 ### Added
 
-- Opt-in Forgejo OAuth credential linking with session-bound PKCE, encrypted access/refresh tokens, lazy serialized refresh and a Dashboard connection button; PATs remain supported. See `docs/security/forgejo-oauth.md` before migration 0015.
 - Opt-in OAuth authorization with PKCE S256, dynamic registration, bounded consent lifetimes and rotating opaque refresh tokens.
 - Transactional family revocation, historical backfill and PostgreSQL concurrency/lifecycle tests; see `docs/security/oauth-upgrade.md` before applying migrations 0009–0012.
 - Claude/OpenAI edge troubleshooting covering discovery, registration, token exchange and Cloudflare bot challenges.

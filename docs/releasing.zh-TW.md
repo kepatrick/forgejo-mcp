@@ -67,6 +67,20 @@ gh workflow run release.yml --ref main -f version=X.Y.Z
 
 對 v0.2.0 release line，既有安裝必須依[安全加固升級指南](security/upgrade-hardening.zh-TW.md)操作。正式支援 Forgejo 16.0.3；Forgejo 16.0.2 只保留為 comparison baseline。本版沒有 database 或 OAuth migration。
 
+### v0.4.0 升級／發布前檢查
+
+本版新增 Forgejo credential OAuth 與 Admin client 設定，不是重複發布 0.3.0 已有的 MCP client OAuth。
+發布前請閱讀[繁體中文配置與權限指南](security/forgejo-oauth.zh-TW.md)或[英文指南](security/forgejo-oauth.md)。
+
+- Schema head：`20261001_0016`；0015 加入 credential linking，0016 加入加密 client 設定與 pending flow 設定版本綁定。
+- 升級前備份 PostgreSQL volumes、部署設定與 credential encryption keys；停止舊 App workers，同步部署相符 code／migrations。保留 PAT 支援，不重新產生密鑰。
+- Public／Confidential 模式、Client ID／Secret 與完整固定 callback 必須符合另行註冊的 Forgejo application；已儲存的 Dashboard 設定優先於部署 defaults，包含停用狀態。
+- 確認 rollback 撤銷／資料刪除注意事項，以及 Forgejo OAuth 無細分 scopes、MCP 只提供工具層級政策的限制；連結本身不會授予工具或 repository membership。
+- 已記錄 CIMD DNS rebinding 與非 ASCII resource 驗證限制；不要宣稱本版修正了所有 OAuth findings。
+- 自動化 Forgejo OAuth token／principal 呼叫使用 mocks；本機 PostgreSQL／Chromium 測試不能取代 Release workflow 的受支援版本 OpenAPI 與完整 Forgejo E2E matrix。
+- 若本機已準備 0.4.0 metadata，先將已 review 的變更合併／push 至遠端 `main`，再執行 **Release** 並輸入相同的 `0.4.0`；workflow 會重用 metadata。不要同時用另一條路徑建立／push tag。
+- 不要為了通過本機 release 檢查而刪除原有未追蹤檔案；發布時可使用乾淨 checkout／worktree 或 GitHub workflow。
+
 ## 選用的本機準備與 tag 發布
 
 若 repository rules 要求 release commit 必須透過 PR review，可改用本機腳本，而不是讓 workflow 自動 push。

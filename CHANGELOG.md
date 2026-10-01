@@ -8,6 +8,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-01
+
 ### Added
 
 - Optional Forgejo account OAuth linking, separate from MCP-client OAuth: session-bound PKCE S256, encrypted per-user access/refresh tokens, identity verification and serialized lazy refresh; scoped PATs remain supported (migration 0015).

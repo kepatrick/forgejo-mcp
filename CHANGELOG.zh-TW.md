@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-01
+
 ### 新增
 
 - 可選用的 Forgejo 帳號 OAuth 連結，與 MCP client OAuth 分開：session-bound PKCE S256、加密的個別使用者 access／refresh tokens、身分驗證與序列化 lazy refresh；保留 scoped PAT 支援（migration 0015）。

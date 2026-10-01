@@ -13,7 +13,8 @@ Ask your administrator for:
 - the Forgejo username registered for you;
 - confirmation of which tools you are allowed to use.
 
-You also need access to the matching Forgejo account and permission to create a personal access token (PAT).
+You also need access to the matching Forgejo account and either permission to
+create a scoped PAT or admin-enabled Forgejo OAuth linking.
 
 ## 1. Accept the invitation
 
@@ -67,6 +68,15 @@ If verification fails, check:
 - that it has identity/current-user access;
 - that the configured Forgejo instance is reachable.
 
+### Alternative to steps 2–3: connect with Forgejo OAuth
+
+If the administrator enabled it, choose **Connect with Forgejo OAuth** in
+**My Forgejo credential** and approve using your assigned Forgejo account. You do
+not register a separate application; admin configures it once. Username and
+existing numeric identity must match. Failed linking leaves your prior credential
+intact. Forgejo OAuth has no fine-grained API scopes; choose a scoped PAT when
+narrower upstream operations are needed. See the [configuration/permission guide](security/forgejo-oauth.md).
+
 ## 4. Create an MCP token
 
 1. Open the MCP token section.
@@ -79,6 +89,15 @@ If verification fails, check:
 The MCP token is shown only once. Store it in the MCP client's secret storage. If it is lost, revoke it and create another token. A new token does not automatically receive every tool in your user allowance; if step 6 is omitted, the client may connect successfully but list no tools.
 
 An MCP token is not a Forgejo PAT: it authenticates to Forgejo MCP, which then applies central permissions before using your encrypted Forgejo credential. The MCP token neither contains nor returns the Forgejo PAT, so it cannot be used to call the Forgejo API directly.
+
+### Alternative: MCP OAuth consent
+
+If MCP OAuth is enabled separately, connect an OAuth-capable client to `/mcp` and
+complete consent as your invited Dashboard user, not admin. Select a duration and
+at least one offered tool. **Select all** and **Clear selection** only change the
+checkboxes; press **Authorize** to approve. No tools are preselected; refresh
+never adds tools or extends the original consent expiry. This authorization is
+separate from your Forgejo application approval. See [MCP OAuth lifecycle](security/oauth-upgrade.md).
 
 ## 5. Connect an MCP client
 
@@ -97,7 +116,12 @@ After connecting, request the tool list. A tool appears only when all of these a
 1. the administrator enabled it globally;
 2. it is allowed for your user;
 3. it is granted to this MCP token;
-4. your Forgejo PAT remains active and verified.
+4. your Forgejo PAT/OAuth credential remains active and verified.
+
+The linked Forgejo account must also have rights on each requested resource.
+A repository response containing `permissions.admin=true` is upstream metadata,
+not permission to invoke all MCP tools. MCP policy is tool-level, not a repository
+allowlist; Forgejo account/team membership controls repository visibility.
 
 ## 6. Typical workflow
 

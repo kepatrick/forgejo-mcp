@@ -13,7 +13,7 @@
 - 管理員為你登記的 Forgejo username；
 - 你獲准使用的工具範圍。
 
-你也需要能登入對應的 Forgejo 帳號，並具有建立 personal access token（PAT）的權限。
+你也需要能登入對應的 Forgejo 帳號，並可建立 scoped PAT，或由 admin 啟用 Forgejo OAuth 連結。
 
 ## 1. 接受邀請
 
@@ -67,6 +67,12 @@ Forgejo MCP 會呼叫 Forgejo current-user API，並要求回傳的 username 符
 - PAT 具有 identity/current-user access；
 - 已設定的 Forgejo instance 可以連線。
 
+### 步驟 2–3 的替代方式：連結 Forgejo OAuth
+
+若 admin 已啟用，在 **My Forgejo credential** 點 **Connect with Forgejo OAuth**，以指定的 Forgejo 帳號登入並同意。
+Application 由 admin 配置一次，不需每位 user 自行註冊；username 與既有 numeric identity 都必須相符，失敗時保留原憑證。
+Forgejo OAuth 沒有細分 API scopes；需要更窄的上游操作權限時仍用 scoped PAT。詳見[配置與權限指南](security/forgejo-oauth.zh-TW.md)。
+
 ## 4. 建立 MCP token
 
 1. 開啟 MCP token 區域。
@@ -79,6 +85,12 @@ Forgejo MCP 會呼叫 Forgejo current-user API，並要求回傳的 username 符
 MCP token 只會顯示一次，請存放在 MCP client 的 secret storage。若遺失，請撤銷舊 token 並建立新 token。新 token 預設不會因為 user allowance 已設定就自動取得全部工具；若未完成第 6 步，client 可能可以連線但看不到任何工具。
 
 MCP token 不是 Forgejo PAT。它用來向 Forgejo MCP 驗證身分；Forgejo MCP 套用集中權限後，才會使用你加密儲存的 Forgejo credential。MCP token 本身不包含也不會回傳 Forgejo PAT，因此無法拿來直接呼叫 Forgejo API。
+
+### 替代方式：MCP OAuth consent
+
+若另行啟用 MCP OAuth，讓 OAuth-capable client 連線 `/mcp`，以受邀 Dashboard user 而非 admin 完成 consent。
+選擇期限並至少勾一個工具；**Select all**／**Clear selection** 只改變勾選，仍須按 **Authorize**。
+預設不勾工具，refresh 不增加工具或延長原期限。此授權與 Forgejo application approval 是兩段獨立的 OAuth；詳見[MCP OAuth 生命週期（英文）](security/oauth-upgrade.md)。
 
 ## 5. 連接 MCP client
 
@@ -97,7 +109,10 @@ Authorization: Bearer fmcp_...
 1. 管理員已全域啟用；
 2. 允許你的使用者使用；
 3. 已授權給這個 MCP token；
-4. 你的 Forgejo PAT 仍有效且已驗證。
+4. 你的 Forgejo PAT／OAuth 憑證仍有效且已驗證。
+
+對指定資源操作時，Forgejo 帳號本身也要有權限。Repo response 的 `permissions.admin=true` 是上游 metadata，不代表自動取得所有 MCP 工具。
+MCP policy 是工具層級，不是 repository allowlist；repository 可見範圍應由 Forgejo 帳號／team membership 限制。
 
 ## 6. 典型工作流程
 

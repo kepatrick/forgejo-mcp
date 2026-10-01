@@ -1,5 +1,10 @@
 # OAuth upgrade and lifecycle
 
+This guide covers **MCP client → Forgejo MCP**, not the separate Forgejo account
+linking flow. For Forgejo application registration, Admin configuration and
+upstream permission limits, see [English](forgejo-oauth.md) or
+[繁體中文](forgejo-oauth.zh-TW.md).
+
 OAuth is opt-in (`FMCP_OAUTH_ENABLED=false` by default). Static MCP tokens continue
 to work. No extra Forgejo PAT scopes or tool permissions are granted by OAuth:
 global tool enablement, user allowances and the grant all remain enforced.
@@ -24,8 +29,10 @@ allowlisted. Native loopback callbacks and PKCE S256 are supported. Clients rene
 short-lived access tokens using rotating refresh tokens until the consent grant's
 absolute expiry (choices bounded by administrator policy, maximum 90 days).
 After signing in, the user chooses that duration and selects at least one tool on
-the consent page. No tools are preselected. Only globally enabled tools inside the
-admin-defined user allowance appear. The authorization code stores that exact
+the consent page. No tools are preselected. **Select all** selects only the
+currently offered tools; **Clear selection** clears them. These buttons do not
+submit approval and do not modify existing tokens. Only globally enabled tools
+inside the admin-defined user allowance appear. The authorization code stores that exact
 selection; token exchange intersects it with current permissions. Each refresh
 intersects the previous token's grants with current permissions, preserving token
 permission tightening and never adding newly enabled/allowed tools or extending

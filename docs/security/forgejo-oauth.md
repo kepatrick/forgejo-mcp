@@ -1,11 +1,35 @@
 # Connect a Forgejo credential with OAuth
 
+[繁體中文配置與權限指南](forgejo-oauth.zh-TW.md)
+
 This is **Forgejo MCP → Forgejo** authorization. It is independent of the optional
 **MCP client → Forgejo MCP** OAuth server and works when `FMCP_OAUTH_ENABLED=false`.
 PATs remain supported. This feature links an existing invited Dashboard user; it
 is not anonymous login, account creation, or a bypass of administrator tool policy.
 
+## Two independent OAuth connections
+
+| Connection | Purpose | Application / callback |
+|---|---|---|
+| MCP client → Forgejo MCP | Authorize an AI client to call selected MCP tools | The MCP server's OAuth endpoints, normally dynamic `/register`; callback belongs to the MCP client |
+| Forgejo MCP → Forgejo | Link each invited user's Forgejo API credential | One application registered in Forgejo; fixed Dashboard callback `/api/me/credential/oauth/callback` |
+
+The Forgejo Client ID/Secret are shared **application configuration**, not a shared
+Forgejo user credential. Register the application once per deployment, not once
+per user. Each invited user approves it separately and receives their own encrypted
+upstream credential. The application owner does not choose the user identity:
+the Forgejo account signed in during consent must match the invited user's assigned
+identity. Dashboard admins configure the application; invited Dashboard users link
+credentials and authorize MCP clients.
+
 ## Register and configure
+
+Before using the new UI, preserve encryption keys, back up PostgreSQL, stop old
+workers and upgrade through migration 0016 with `alembic upgrade head`. Restart
+the matching application. Existing PAT/OAuth credentials remain unchanged; old
+pending Forgejo authorization attempts must be started again. The supported
+Forgejo baseline is **16.0.3**; behavior observed on older versions is not a support
+guarantee.
 
 1. Create an OAuth application in the trusted Forgejo account's **user settings →
    Applications** (`/user/settings/applications`). Prefer a confidential client.
@@ -29,10 +53,25 @@ is not anonymous login, account creation, or a bypass of administrator tool poli
    Save to apply immediately, without editing deployment files or restarting.
    The configured Forgejo instance must still appear in the deployment's
    `FMCP_FORGEJO_ALLOWED_BASE_URLS`; this UI cannot widen that trusted egress list.
-5. Preserve the credential encryption key, back up PostgreSQL, stop old application
-   workers, apply `alembic upgrade head` (through migration 0016), and start this
-   branch's application. Existing PAT and OAuth credentials remain unchanged.
-   Pending attempts from before the upgrade must be started again.
+5. Save and verify that **Enable Forgejo OAuth linking** remains checked. Merely
+   entering a Client ID/base URL does not enable linking. Refresh the invited
+   user's Dashboard before starting a new authorization attempt.
+
+Match the Forgejo application and Dashboard modes exactly:
+
+| Forgejo application | Dashboard client type | Client Secret |
+|---|---|---|
+| Confidential Client checked | Confidential | Required; paste the generated secret into the Admin UI |
+| Confidential Client unchecked | Public | None; PKCE S256 is still required and always used |
+
+The local callback example is
+`http://127.0.0.1:8000/api/me/credential/oauth/callback`, with base URL
+`http://127.0.0.1:8000`. It works only when the browser can reach that same local
+machine. `localhost` and `127.0.0.1`, different ports and trailing callback slashes
+are not interchangeable registered values. For other users, use a reachable HTTPS
+Dashboard origin. The base URL field controls **this Forgejo callback only**: it
+does not configure the separate MCP OAuth issuer/resource or widen Forgejo egress
+allowlists.
 
 ### Optional deployment defaults
 
@@ -116,6 +155,68 @@ scoped PAT can provide a narrower upstream credential. MCP global tool settings,
 admin-defined user allowances and per-MCP-token grants continue to be checked and
 are not expanded by linking Forgejo OAuth. Never claim OAuth is equivalent to a
 least-privilege PAT. Use a non-administrator Forgejo user where possible.
+
+### Effective permissions and their limits
+
+A tool operation must pass all of these checks:
+
+1. Admin globally enables the tool.
+2. Admin allows that tool for the invited user.
+3. The current MCP token grants that tool.
+4. The user's Forgejo credential/account can perform the operation on the requested resource.
+
+On MCP OAuth consent, nothing is selected by default. **Select all** selects only
+the tools currently shown within the admin-defined boundary; **Clear selection**
+clears them. Neither button submits consent. The user must choose a duration and
+press **Authorize**. New tools or increased allowances do not expand an existing
+MCP grant automatically; refresh can only retain or narrow grants, not extend the
+original consent expiry. Restart MCP consent to request a broader selection.
+
+MCP policy is **tool-level**, not a separate repository/path allowlist. For an
+allowed repository tool, the caller can name any repository the linked Forgejo
+account can access. To restrict repositories, change Forgejo repository/team
+membership or use a dedicated account. To narrow upstream API operations, use a
+scoped PAT. An OAuth credential does not make write/admin permissions disappear
+upstream simply because only read tools were selected in MCP: MCP enforces that
+selection at its own boundary, not inside a stolen Forgejo token. Treat backend
+and encryption-key compromise as compromise of the stored upstream credentials.
+
+For example, `forgejo_get_repository` can return Forgejo metadata containing
+`permissions.admin=true` and `push=true` while the MCP token grants only that
+read tool. Those metadata flags do **not** authorize other MCP write/admin tools.
+Conversely, selecting a write tool cannot override missing Forgejo write rights.
+
+### Disable and revoke the correct connection
+
+| Action | Effect | Does not do |
+|---|---|---|
+| Disable Forgejo OAuth linking in Admin settings | Blocks linking/use of OAuth credentials | Revoke upstream Forgejo application approval, delete PATs or revoke MCP token families |
+| Revoke saved Forgejo credential / disable user / change assigned username | Clears local access/refresh secrets as applicable | Revoke upstream Forgejo approval |
+| Revoke an MCP token/grant in Dashboard | Stops the corresponding client authorization | Revoke the linked Forgejo application approval |
+| Remove an MCP client's local configuration or stop this server | Disconnects that local setup | Revoke server-side grants, erase database volumes or revoke Forgejo approval |
+
+For full removal, separately revoke MCP grants and remove the application's
+approval in the authorizing user's Forgejo settings. There is no automatic
+upstream revocation promise. Forgejo token expiry and MCP consent expiry are
+separate lifecycles; automatic Forgejo refresh does not extend MCP consent.
+
+## Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| “Forgejo OAuth linking is not enabled” | Admin enable checkbox, saved configuration, configured Forgejo instance and deployment allowlist. Refresh the user's page; configuration saved with `enabled=false` overrides environment defaults. |
+| Callback says denied/expired/unverified | This is a generic message, not proof of account mismatch. Use secret-safe server event names/status codes to identify the failed stage. |
+| `forgejo_oauth_exchange_rejected`, HTTP 400 | First check Public vs Confidential on both sides, Client ID/Secret, and exact registered redirect URI. A reused/expired code or changed pending configuration also requires starting again. The current log records status, not the provider error body; 400 alone does not identify one exact cause. |
+| Account verification fails | Sign in to Forgejo as the assigned invited-user account; both username and existing numeric identity must match. |
+| OAuth linked but MCP consent cannot proceed | Admin must globally enable tools and grant user allowances; select at least one offered tool. Linking itself grants no tools. |
+| MCP exposes only a few tools | Check global settings, user allowances, this token's consent selection and client tool exposure/cache. A Forgejo admin permission flag does not bypass them. |
+| Repository “not found” | Check owner/name and the Forgejo account's repository visibility. A private-resource 404 does not by itself prove OAuth authentication failed. |
+| Refresh fails | Reconnect or use a PAT; do not repeatedly replay a potentially rotated refresh token. |
+
+Never publish codes, states, tokens, passwords or client secrets when reporting
+errors. The real upstream token/principal endpoints are mocked in automated
+integration tests. A manual successful read verifies that particular identity and
+resource; it does not certify all write tools or an unsupported Forgejo release.
 
 Callback responses disable caching/referrer disclosure, and the application
 redacts callback query strings from Uvicorn access logs. Configure reverse proxies

@@ -115,8 +115,8 @@ After signing in:
 3. Enable the required tools globally.
 4. Create a user with their expected Forgejo username and send a one-time invitation.
 5. Set the user's tool allowance.
-6. Have the user verify a scoped Forgejo PAT and create an MCP token.
-7. Grant the required tools to that token.
+6. Have the user verify a scoped PAT or [link their Forgejo account with OAuth](docs/security/forgejo-oauth.md).
+7. Create a static MCP token with explicit tool grants, or complete MCP OAuth consent with a duration and selected tools.
 8. Connect an MCP client to `POST /mcp`.
 
 See the [administrator guide](docs/admin-guide.md) and [user guide](docs/user-guide.md) for the complete workflow.
@@ -140,6 +140,8 @@ The MCP token is shown only once. Store it in the client's secret storage; query
 | Install and start the service | [Getting started](docs/getting-started.md) |
 | Configure Forgejo, users and permissions | [Administrator guide](docs/admin-guide.md) |
 | Create a PAT and MCP token | [User guide](docs/user-guide.md) |
+| Configure Forgejo OAuth and understand permission limits | [Forgejo OAuth guide](docs/security/forgejo-oauth.md) |
+| Enable MCP-client OAuth and manage its lifecycle | [MCP OAuth operations](docs/security/oauth-upgrade.md) |
 | Connect an MCP client | [MCP client configuration](docs/mcp-client-configuration.md) |
 | Check MCP and Forgejo version support | [Version compatibility](docs/compatibility.md) |
 | Review current constraints | [Known limitations](docs/known-limitations.md) |

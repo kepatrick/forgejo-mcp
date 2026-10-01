@@ -75,6 +75,8 @@ throwaway database (these integration tests reset its data), then run:
 
 ```sh
 uv sync --frozen
+npm ci --prefix frontend
+npm run build --prefix frontend
 uv run playwright install chromium
 FMCP_TEST_BROWSER=1 FMCP_TEST_DATABASE_URL="$TEST_DATABASE_URL" \
   uv run pytest tests/integration/test_oauth_browser.py

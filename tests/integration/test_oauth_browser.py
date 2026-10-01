@@ -1,7 +1,9 @@
 """Real Chromium form submission: TestClient alone cannot enforce browser CSP.
 
 Run with FMCP_TEST_BROWSER=1 and FMCP_TEST_DATABASE_URL against a migrated,
-throwaway PostgreSQL database. Install Chromium with `playwright install chromium`.
+throwaway PostgreSQL database. Build the Dashboard with
+`npm ci --prefix frontend && npm run build --prefix frontend` and install Chromium
+with `playwright install chromium`.
 FMCP_TEST_CHROMIUM_EXECUTABLE optionally selects an existing Chromium binary.
 """
 
@@ -12,6 +14,7 @@ import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import httpx
@@ -33,6 +36,11 @@ pytestmark = pytest.mark.skipif(
 def test_consent_cross_origin_callback_in_chromium(action):
     import asyncio
 
+    dashboard = Path(__file__).resolve().parents[2] / "frontend/dist/index.html"
+    assert dashboard.is_file(), (
+        "Build the Dashboard before running Chromium tests: "
+        "npm ci --prefix frontend && npm run build --prefix frontend"
+    )
     asyncio.run(prepare_oauth_database())
     callbacks = []
     callback_referrers = []

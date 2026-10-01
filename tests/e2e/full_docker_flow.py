@@ -332,9 +332,15 @@ def run_oauth_flow() -> None:
     assert "OAuth cannot add permissions" in consent.text
     assert "name='grant_ttl_days'" in consent.text
     assert "value='90'" in consent.text
+    selected_tools = sorted(tool.name for tool in list_tools() if tool.risk == "read")
+    assert "Nothing is selected by default" in consent.text
+    for tool_name in selected_tools:
+        assert f"name='tool_names' value='{tool_name}'" in consent.text
     dashboard_csrf = client.cookies.get("fmcp_csrf")
     assert dashboard_csrf is not None
-    approval = client.post(
+    # The new consent contract must reject an omitted selection without
+    # consuming the interaction, then accept the user's explicit subset.
+    omitted_selection = client.post(
         "/oauth/consent",
         headers={"Origin": APP_URL},
         data={
@@ -344,7 +350,20 @@ def run_oauth_flow() -> None:
             "grant_ttl_days": "90",
         },
     )
-    assert approval.status_code == 302
+    assert omitted_selection.status_code == 400
+    assert "Select tools for this token" in omitted_selection.text
+    approval = client.post(
+        "/oauth/consent",
+        headers={"Origin": APP_URL},
+        data={
+            "request": interaction,
+            "action": "approve",
+            "csrf": dashboard_csrf,
+            "grant_ttl_days": "90",
+            "tool_names": selected_tools,
+        },
+    )
+    assert approval.status_code == 302, approval.text
     callback = parse_qs(urlsplit(approval.headers["location"]).query)
     assert callback["state"] == ["docker-e2e-state"]
     assert callback["iss"] == [APP_URL]
@@ -368,7 +387,7 @@ def run_oauth_flow() -> None:
     refresh_token = tokens["refresh_token"]
     oauth_mcp = McpClient(access_token)
     oauth_mcp.initialize()
-    assert {tool["name"] for tool in oauth_mcp.list_tools()} == {tool.name for tool in list_tools()}
+    assert {tool["name"] for tool in oauth_mcp.list_tools()} == set(selected_tools)
     assert oauth_mcp.call("forgejo_get_current_user", {})["username"] == "developer"
 
     rotated = checked(
@@ -423,6 +442,7 @@ def run_oauth_flow() -> None:
     assert concurrent_reuse["refresh_token"] == rotated["refresh_token"]
     rotated_mcp = McpClient(rotated_access)
     rotated_mcp.initialize()
+    assert {tool["name"] for tool in rotated_mcp.list_tools()} == set(selected_tools)
     concurrent_mcp = McpClient(concurrent_access)
     concurrent_mcp.initialize()
     oauth_tokens = checked(

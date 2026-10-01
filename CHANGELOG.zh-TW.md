@@ -6,6 +6,24 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-30
+
+### 新增
+
+- 新增可選用的 OAuth 授權，支援 PKCE S256、動態註冊、有期限的同意授權，以及輪替的不透明 refresh token。
+- 新增具交易一致性的 token family 撤銷、歷史資料回填，以及 PostgreSQL concurrency／lifecycle 測試；套用 migrations 0009–0012 前請先閱讀 `docs/security/oauth-upgrade.md`。
+- 新增 Claude／OpenAI edge 疑難排解說明，涵蓋 discovery、registration、token exchange 與 Cloudflare bot challenge。
+- 在 OAuth consent 中新增工具選擇及授權期限設定；選擇結果會在 authorization code exchange 與 refresh 流程中保留，且不會擴大權限（migration 0014）。
+
+### 修正
+
+- 在保留瀏覽器 Origin 驗證與跨來源 referrer 隱私的前提下，允許已註冊的 OAuth callback 通過 consent page 的 CSP。
+- 使用 grant-family identity 保留 OAuth refresh 後的 MCP session，並在每則訊息執行 token 授權與稽核。
+- 在解壓縮前拒絕壓縮的 CIMD 文件，並限制原始 response buffering 大小。
+- 允許 public client 在未提供 `client_secret` 的情況下提出撤銷請求。
+- OAuth 頁面共用 Dashboard 樣式，並在授權前說明 PAT 缺失、工具未獲允許、使用者帳號要求，以及請求已過期等狀況。
+- 在 authorization code exchange 過程中保留省略的 redirect URI（migration 0013），並新增 PostgreSQL 與 Chromium regression coverage。
+
 ## [0.2.0] - 2026-09-09
 
 ### 相容性

@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react'
+import { type FormEvent, type ReactNode, useEffect, useRef, useState } from 'react'
 
 type Account = {
   id: string
@@ -207,18 +207,23 @@ function ChangePassword({ account, onChanged }: { account: Account; onChanged: (
   )
 }
 
-function AccountSecurity({ account, onChanged }: { account: Account; onChanged: (account: Account) => void }) {
+function AccountSecurity({ account, onChanged, onClose }: { account: Account; onChanged: (account: Account) => void; onClose: () => void }) {
+  const dialog = useRef<HTMLDialogElement>(null)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmation, setConfirmation] = useState('')
   const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    const currentDialog = dialog.current
+    currentDialog?.showModal()
+    return () => currentDialog?.close()
+  }, [])
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     setError('')
-    setMessage('')
     if (newPassword !== confirmation) {
       setError('New password confirmation does not match')
       return
@@ -226,10 +231,6 @@ function AccountSecurity({ account, onChanged }: { account: Account; onChanged: 
     setSubmitting(true)
     try {
       onChanged(await api<Account>('/api/auth/change-password', jsonRequest('POST', { current_password: currentPassword, new_password: newPassword })))
-      setCurrentPassword('')
-      setNewPassword('')
-      setConfirmation('')
-      setMessage('Password updated. Other active sessions were revoked.')
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Unable to change password')
     } finally {
@@ -238,18 +239,19 @@ function AccountSecurity({ account, onChanged }: { account: Account; onChanged: 
   }
 
   return (
-    <section className="panel" id="account-security">
-      <div><p className="eyebrow">Account security</p><h2>Change password</h2></div>
-      <p>Update the password for <strong>{account.username}</strong>. Use at least 12 characters and a password that is not used elsewhere.</p>
-      <form onSubmit={submit} className="form">
-        <Field label="Current password"><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required /></Field>
-        <Field label="New password (12+ characters)"><input type="password" minLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" required /></Field>
-        <Field label="Confirm new password"><input type="password" minLength={12} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" required /></Field>
-        {error && <p className="error" role="alert">{error}</p>}
-        {message && <p className="success" role="status">{message}</p>}
-        <button disabled={submitting}>{submitting ? 'Updating…' : 'Update password'}</button>
-      </form>
-    </section>
+    <dialog ref={dialog} className="modal" aria-labelledby="account-security-title" onCancel={(event) => { event.preventDefault(); onClose() }} onClick={(event) => { if (event.target === event.currentTarget) onClose() }}>
+      <section className="modalPanel">
+        <div className="modalHeader"><div><p className="eyebrow">Account security</p><h2 id="account-security-title">Change password</h2></div><button type="button" className="secondary modalClose" aria-label="Close password dialog" onClick={onClose}>×</button></div>
+        <p>Update the password for <strong>{account.username}</strong>. Use at least 12 characters and a password that is not used elsewhere.</p>
+        <form onSubmit={submit} className="form">
+          <Field label="Current password"><input autoFocus type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required /></Field>
+          <Field label="New password (12+ characters)"><input type="password" minLength={12} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" required /></Field>
+          <Field label="Confirm new password"><input type="password" minLength={12} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" required /></Field>
+          {error && <p className="error" role="alert">{error}</p>}
+          <div className="modalActions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button disabled={submitting}>{submitting ? 'Updating…' : 'Update password'}</button></div>
+        </form>
+      </section>
+    </dialog>
   )
 }
 
@@ -682,9 +684,15 @@ function InvocationAudit({ role }: { role: Account['role'] }) {
 
 function Dashboard({ account, onAccountChanged, onLogout }: { account: Account; onAccountChanged: (account: Account) => void; onLogout: () => void }) {
   const [tokenRevision, setTokenRevision] = useState(0)
+  const [showAccountSecurity, setShowAccountSecurity] = useState(false)
+  const [passwordMessage, setPasswordMessage] = useState('')
   async function logout() { await api<void>('/api/auth/logout', jsonRequest('POST')); onLogout() }
-  function showAccountSecurity() { document.getElementById('account-security')?.scrollIntoView({ behavior: 'smooth', block: 'start' }) }
-  return <main className="dashboard"><header className="topbar"><div><span className="brand">Forgejo MCP</span><span className="role">{account.role}</span></div><div className="actions"><span>{account.username}</span><button className="secondary" onClick={showAccountSecurity}>Change password</button><button className="secondary" onClick={logout}>Sign out</button></div></header><div className="content"><section className="hero"><p className="eyebrow">Internal developer platform</p><h1>Dashboard</h1><p className="description">Manage the Forgejo connection, internal identities, credentials, and MCP client access.</p></section><AccountSecurity account={account} onChanged={onAccountChanged} />{account.role === 'admin' ? <><ForgejoSettings /><UserManagement /><AdminTools /><AdminMcpTokens /><InvocationAudit role="admin" /></> : <><MyForgejoCredential /><MyMcpTokens onTokensChanged={() => setTokenRevision((current) => current + 1)} /><MyToolPermissions tokenRevision={tokenRevision} /><InvocationAudit role="user" /></>}</div></main>
+  function passwordChanged(updatedAccount: Account) {
+    onAccountChanged(updatedAccount)
+    setShowAccountSecurity(false)
+    setPasswordMessage('Password updated. Other active sessions were revoked.')
+  }
+  return <main className="dashboard"><header className="topbar"><div><span className="brand">Forgejo MCP</span><span className="role">{account.role}</span></div><div className="actions"><span>{account.username}</span><button className="secondary" onClick={() => { setPasswordMessage(''); setShowAccountSecurity(true) }}>Change password</button><button className="secondary" onClick={logout}>Sign out</button></div></header><div className="content"><section className="hero"><p className="eyebrow">Internal developer platform</p><h1>Dashboard</h1><p className="description">Manage the Forgejo connection, internal identities, credentials, and MCP client access.</p></section>{passwordMessage && <p className="success successNotice" role="status">{passwordMessage}</p>}{account.role === 'admin' ? <><ForgejoSettings /><UserManagement /><AdminTools /><AdminMcpTokens /><InvocationAudit role="admin" /></> : <><MyForgejoCredential /><MyMcpTokens onTokensChanged={() => setTokenRevision((current) => current + 1)} /><MyToolPermissions tokenRevision={tokenRevision} /><InvocationAudit role="user" /></>}</div>{showAccountSecurity && <AccountSecurity account={account} onChanged={passwordChanged} onClose={() => setShowAccountSecurity(false)} />}</main>
 }
 
 function Field({ label, children }: { label: string; children: ReactNode }) { return <label><span>{label}</span>{children}</label> }

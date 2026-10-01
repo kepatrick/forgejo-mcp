@@ -8,6 +8,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-30
+
 ### Added
 
 - Opt-in Forgejo OAuth credential linking with session-bound PKCE, encrypted access/refresh tokens, lazy serialized refresh and a Dashboard connection button; PATs remain supported. See `docs/security/forgejo-oauth.md` before migration 0015.

@@ -100,6 +100,15 @@ button.danger { color: #8c2f2f; background: #f8e6e6; }
 .auditRow span, .auditRow small { color: #65736a; overflow-wrap: anywhere; }
 .badge-succeeded { color: #315d40; background: #e4f2e6; }
 .badge-failed, .badge-denied { color: #8c2f2f; background: #f8e6e6; }
+.successNotice { margin-top: 2rem; padding: 1rem; border: 1px solid #b9d9c0; border-radius: 0.75rem; background: #eaf6ec; }
+.modal { width: min(calc(100% - 2rem), 36rem); max-height: calc(100vh - 2rem); padding: 0; border: 0; border-radius: 1rem; background: transparent; box-shadow: 0 1.5rem 4rem rgba(31, 55, 38, 0.25); }
+.modal::backdrop { background: rgba(20, 31, 24, 0.55); backdrop-filter: blur(2px); }
+.modalPanel { max-height: calc(100vh - 2rem); padding: clamp(1.25rem, 4vw, 2rem); overflow-y: auto; border: 1px solid #cad6cc; border-radius: 1rem; background: #fff; }
+.modalPanel h2 { margin: 0; font-size: 1.6rem; }
+.modalHeader, .modalActions { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.modalHeader { align-items: flex-start; }
+.modalClose { padding: 0.35rem 0.7rem; font-size: 1.35rem; line-height: 1; }
+.modalActions { justify-content: flex-end; }
 /* Server-rendered OAuth pages use the same auth card and form components. */
 .oauthConsent { max-width: 56rem; width: min(100%, 56rem); }
 .oauthTools { min-width: 0; margin: 0; padding: 0; border: 0; }

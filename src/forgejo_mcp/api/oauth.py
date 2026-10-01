@@ -364,6 +364,9 @@ def create_oauth_routes(service: OAuthService, settings: Settings) -> list[Route
             headers={"Cache-Control": "public, max-age=86400"},
         )
 
+    async def oauth_consent_script(_request: Request) -> Response:
+        return Response(_OAUTH_SCRIPT, media_type="application/javascript")
+
     resource_metadata_path = _resource_metadata_path(service.resource_url)
     return [
         Route(
@@ -396,6 +399,7 @@ def create_oauth_routes(service: OAuthService, settings: Settings) -> list[Route
         Route("/oauth/login", endpoint=oauth_login, methods=["POST"]),
         Route("/oauth/consent", endpoint=resolve_consent, methods=["POST"]),
         Route("/oauth/styles.css", endpoint=oauth_styles, methods=["GET"]),
+        Route("/oauth/consent.js", endpoint=oauth_consent_script, methods=["GET"]),
     ]
 
 
@@ -484,8 +488,9 @@ def _login_page(
         "autocomplete='current-password' required maxlength='1024'></label>"
         f"{error}<button type='submit'>Sign in</button></form>"
         "<p class='description'>Use the Dashboard user account linked to your Forgejo identity, "
-        "not an administrator account. First accept your invitation, verify your Forgejo PAT "
-        "in the Dashboard, and ask your administrator to enable your tools.</p>"
+        "not an administrator account. First accept your invitation, connect with Forgejo OAuth "
+        "or verify your Forgejo PAT in the Dashboard, and ask your administrator to enable "
+        "your tools.</p>"
         "<p><a href='/'>Open Dashboard</a></p></section>"
     )
 
@@ -530,7 +535,11 @@ def _consent_page(
         "<fieldset class='oauthTools'><legend>Token tool permissions</legend>"
         "<p class='description'>Choose at least one tool for this connection. Nothing is "
         "selected by default. Only tools enabled and allowed by your administrator appear; "
-        "your Forgejo PAT may further limit access.</p>"
+        "your Forgejo account permissions and credential may further limit access.</p>"
+        "<div class='actions'><button type='button' class='secondary' "
+        "data-tool-selection='all' disabled>Select all</button>"
+        "<button type='button' class='secondary' data-tool-selection='none' "
+        "disabled>Clear selection</button></div>"
         f"<div class='tokenToolGrid'>{tool_options}</div></fieldset>"
         "<div class='actions'><button type='submit' name='action' "
         "value='approve'>Authorize</button>"
@@ -540,6 +549,7 @@ def _consent_page(
         "in the Dashboard's MCP tokens section at any time. Refresh will not add unselected "
         "tools or extend the chosen authorization duration. Deny returns to your MCP client "
         "without granting access.</p></section>"
+        f"<script defer src='/oauth/consent.js?v={_OAUTH_SCRIPT_VERSION}'></script>"
     )
 
 
@@ -595,9 +605,10 @@ def _consent_guidance(
         ),
         "credential_required": (
             "Set up your Forgejo credential",
-            "Your Dashboard account does not have an active, verified Forgejo PAT. "
-            "Open the Dashboard as this user, submit and verify your PAT in the Forgejo "
-            "credential section, then restart authorization. Never paste your PAT into Pi chat.",
+            "Your Dashboard account does not have an active, verified Forgejo credential. "
+            "Open the Dashboard as this user and connect with Forgejo OAuth, or submit and "
+            "verify a PAT in the Forgejo credential section. Then restart MCP authorization. "
+            "Never paste your PAT into Pi chat.",
         ),
         "tools_required": (
             "Tool access is required",
@@ -647,3 +658,5 @@ def _consent_guidance(
 # One stylesheet is packaged for both the Vite Dashboard and backend OAuth pages.
 _OAUTH_CSS = files("forgejo_mcp").joinpath("static/dashboard.css").read_text(encoding="utf-8")
 _OAUTH_CSS_VERSION = hashlib.sha256(_OAUTH_CSS.encode()).hexdigest()[:12]
+_OAUTH_SCRIPT = files("forgejo_mcp").joinpath("static/oauth-consent.js").read_text(encoding="utf-8")
+_OAUTH_SCRIPT_VERSION = hashlib.sha256(_OAUTH_SCRIPT.encode()).hexdigest()[:12]

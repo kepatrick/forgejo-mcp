@@ -67,6 +67,21 @@ Use the UI or CLI dispatch once for a release; do not start both.
 
 For the v0.2.0 release line, existing installations must follow the [security hardening upgrade guide](security/upgrade-hardening.md). Forgejo 16.0.3 is supported; Forgejo 16.0.2 is retained only as a comparison baseline. No database or OAuth migration is introduced.
 
+### v0.4.0 upgrade/release preflight
+
+This release introduces Forgejo credential OAuth and Admin client settings, not
+just the MCP-client OAuth already released in 0.3.0. See the [English](security/forgejo-oauth.md)
+or [Traditional Chinese guide](security/forgejo-oauth.zh-TW.md) before publishing.
+
+- Schema head: `20261001_0016` (0015 adds credential linking; 0016 adds encrypted client settings and pending-flow configuration binding).
+- Preserve PostgreSQL volumes, configuration and credential encryption keys; back up before upgrading. Stop old App workers and deploy matching code/migrations together. PATs remain supported.
+- Public/Confidential mode, Client ID/Secret and exact fixed callback must match the separately registered Forgejo application. Existing saved Dashboard settings override deployment defaults, even when disabled.
+- Review rollback revocation/data-loss notes and the limitations of unscoped Forgejo OAuth and tool-level MCP policy; linking does not grant tools or repository membership.
+- Known CIMD DNS rebinding and non-ASCII resource-validation limitations are documented; do not market this release as resolving every OAuth finding.
+- Automated Forgejo OAuth token/principal calls are mocked. Local PostgreSQL/Chromium tests do not replace the Release workflow's supported-version OpenAPI and full Forgejo E2E matrix.
+- If metadata was prepared locally for 0.4.0, dispatch **Release** with that same `0.4.0`; preparation reuses it. Push/merge the reviewed local changes to remote `main` first. Do not also create/push a tag through another publication path.
+- Original untracked working-directory files must not be deleted just to satisfy local release checks. Use a clean checkout/worktree or the GitHub workflow for publication.
+
 ## Optional local preparation and tag publication
 
 The script remains available for maintainers whose repository rules require a reviewed release commit instead of an automated push.

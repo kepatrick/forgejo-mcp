@@ -34,7 +34,13 @@ class RequestBodyLimitMiddleware:
             return
         path = str(scope.get("path", ""))
         limit = self.max_bytes if path == "/mcp" else None
-        if path in {"/authorize", "/token", "/register", "/revoke"} or path.startswith("/oauth/"):
+        if path in {
+            "/authorize",
+            "/token",
+            "/register",
+            "/revoke",
+            "/api/forgejo/instance/oauth",
+        } or path.startswith("/oauth/"):
             limit = self.oauth_max_bytes
         if limit is None:
             await self.app(scope, receive, send)

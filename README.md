@@ -14,7 +14,7 @@ Maintainers: [versioned Docker image and GitHub Release workflow](docs/releasing
 
 Forgejo MCP is a self-hosted [Model Context Protocol](https://modelcontextprotocol.io/) server and management Dashboard that gives organizations centrally governed, controlled and observable AI access to an existing Forgejo instance.
 
-Users connect with their own scoped Forgejo personal access tokens (PATs). Administrators decide which MCP tools are enabled globally, available to each user and granted to each show-once MCP token.
+Users connect with their own scoped Forgejo personal access tokens (PATs), or opt into [Forgejo OAuth credential linking](docs/security/forgejo-oauth.md). Forgejo OAuth does not provide fine-grained API scopes; scoped PATs remain the narrower option. Administrators decide which MCP tools are enabled globally and available to each user; users choose grants for their MCP tokens.
 
 > **v0.1.0 is the initial open-source release and supports Forgejo 16.0.2.** The v0.2.0 release line and current `main` support Forgejo 16.0.3 and include deployment security changes. Review the [compatibility matrix](docs/compatibility.md), [upgrade guide](docs/security/upgrade-hardening.md) and [known limitations](docs/known-limitations.md) before production use.
 
@@ -22,9 +22,10 @@ Users connect with their own scoped Forgejo personal access tokens (PATs). Admin
 
 - 50 tools for repositories, organization repository creation, migration and pull-mirror management, git trees, branches, commits, labels, milestones, Issues, pull requests, reviews, Actions runs, jobs, logs and artifacts, tags and releases.
 - Global, user and token-level tool authorization in addition to Forgejo's own permissions.
-- Per-user Forgejo identity through a verified, scoped PAT.
-- AES-256-GCM encryption for stored PATs and show-once MCP tokens.
+- Per-user Forgejo identity through a verified, scoped PAT or opt-in Forgejo OAuth.
+- AES-256-GCM encryption for stored Forgejo access/refresh credentials and show-once MCP tokens.
 - A web Dashboard for Forgejo configuration, users, permissions and audit records.
+- Admin-configured Forgejo OAuth Client ID, encrypted Client Secret and public base URL, with a fixed, copyable redirect URL and immediate application without a restart.
 - Redacted invocation auditing, structured logs, health endpoints and Prometheus metrics.
 
 ## Governance for company use
@@ -32,7 +33,7 @@ Users connect with their own scoped Forgejo personal access tokens (PATs). Admin
 Forgejo MCP is designed as a governance layer between company AI clients and Forgejo—not merely as another API wrapper.
 
 - **Manageable permissions:** administrators centrally control which tools are enabled globally, available to each user and granted to each MCP token.
-- **Controlled operations:** AI clients never receive an unrestricted shared Forgejo token. Every operation remains bounded by the user's PAT scopes, Forgejo repository permissions and server-side input limits.
+- **Controlled operations:** AI clients never receive an unrestricted shared Forgejo token. Every operation remains bounded by MCP tool policy, Forgejo repository permissions and server-side input limits (plus PAT scopes when using a scoped PAT).
 - **Traceable identity:** each MCP token belongs to a specific user and client, so activity is not hidden behind a shared service account.
 - **Auditable behavior:** tool, user, target, authorization decision, status, duration and correlation identifiers are recorded with sensitive values redacted.
 - **Observable service:** structured logs, health checks, Prometheus metrics and request/user/invocation correlation support operational inspection.
@@ -42,14 +43,14 @@ Forgejo MCP is designed as a governance layer between company AI clients and For
 ## How it works
 
 ```text
-MCP client ──Bearer token──> Forgejo MCP /mcp ──user PAT──> Forgejo API
+MCP client ──Bearer token──> Forgejo MCP /mcp ──user PAT/OAuth──> Forgejo API
                                   │
 Web Dashboard ──admin/user──> permissions, credentials and audit records
                                   │
                               PostgreSQL
 ```
 
-Forgejo MCP does not replace Forgejo authorization. A tool is available only when it is globally enabled, allowed for the user, granted to the MCP token, and permitted by the user's Forgejo account and PAT.
+Forgejo MCP does not replace Forgejo authorization. A tool is available only when it is globally enabled, allowed for the user, granted to the MCP token, and permitted by the user's Forgejo account and credential. Forgejo OAuth linking and MCP OAuth client authorization are separate flows.
 
 ## Requirements
 
@@ -114,8 +115,8 @@ After signing in:
 3. Enable the required tools globally.
 4. Create a user with their expected Forgejo username and send a one-time invitation.
 5. Set the user's tool allowance.
-6. Have the user verify a scoped Forgejo PAT and create an MCP token.
-7. Grant the required tools to that token.
+6. Have the user verify a scoped PAT or [link their Forgejo account with OAuth](docs/security/forgejo-oauth.md).
+7. Create a static MCP token with explicit tool grants, or complete MCP OAuth consent with a duration and selected tools.
 8. Connect an MCP client to `POST /mcp`.
 
 See the [administrator guide](docs/admin-guide.md) and [user guide](docs/user-guide.md) for the complete workflow.
@@ -139,6 +140,8 @@ The MCP token is shown only once. Store it in the client's secret storage; query
 | Install and start the service | [Getting started](docs/getting-started.md) |
 | Configure Forgejo, users and permissions | [Administrator guide](docs/admin-guide.md) |
 | Create a PAT and MCP token | [User guide](docs/user-guide.md) |
+| Configure Forgejo OAuth and understand permission limits | [Forgejo OAuth guide](docs/security/forgejo-oauth.md) |
+| Enable MCP-client OAuth and manage its lifecycle | [MCP OAuth operations](docs/security/oauth-upgrade.md) |
 | Connect an MCP client | [MCP client configuration](docs/mcp-client-configuration.md) |
 | Check MCP and Forgejo version support | [Version compatibility](docs/compatibility.md) |
 | Review current constraints | [Known limitations](docs/known-limitations.md) |

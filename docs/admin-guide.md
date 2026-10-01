@@ -2,7 +2,7 @@
 
 [繁體中文版](admin-guide.zh-TW.md)
 
-This guide covers the v0.1.0 Dashboard workflow for connecting Forgejo, onboarding users and controlling MCP tools. To install and start the service first, follow [Getting started](getting-started.md).
+This guide covers the Dashboard workflow for connecting Forgejo, onboarding users and controlling MCP tools. To install and start the service first, follow [Getting started](getting-started.md).
 
 ## Administrative model
 
@@ -17,7 +17,7 @@ user tool allowance
         +
 token-specific grant
         +
-Forgejo account and PAT permission
+Forgejo account and PAT/OAuth permission
         =
 tool available to the MCP client
 ```
@@ -59,6 +59,20 @@ HTTP is supported only for the local test profile when explicitly enabled.
 
 The current source supports Forgejo `16.0.3+gitea-1.22.0`. Forgejo 16.0.2 remains a comparison baseline only. See the [version compatibility matrix](compatibility.md) before connecting another version.
 
+### Optional: configure Forgejo OAuth linking
+
+Register one application in Forgejo **user settings → Applications**, not the
+instance-wide admin application page. In **Forgejo OAuth settings**, enable linking,
+enter Client ID, choose matching Public/Confidential mode, provide the Confidential
+Secret and set the public **Dashboard** base URL. Copy the adjacent fixed redirect
+URL into Forgejo. Save applies immediately; Secret is encrypted/write-only and
+saved disabled settings override deployment defaults.
+
+Users still accept invitations and link their own assigned Forgejo identities.
+Forgejo OAuth has no fine-grained API scopes, and MCP has no separate repository
+allowlist: use scoped PATs or restrict Forgejo account/team membership when needed.
+See the [full configuration and permission guide](security/forgejo-oauth.md).
+
 ## 3. Configure global tools
 
 Review the 50-tool catalog and enable only the tools the organization intends to expose. Global disable is the top-level kill switch: a disabled tool is unavailable to every user and token.
@@ -99,12 +113,18 @@ For least privilege:
 The user must:
 
 1. sign in to the Dashboard;
-2. submit a scoped Forgejo PAT;
-3. pass username verification;
-4. create a show-once MCP token;
-5. select tools for that token within their allowance.
+2. submit a scoped Forgejo PAT or connect with Forgejo OAuth;
+3. pass verification against their assigned Forgejo identity;
+4. create a show-once static MCP token or authorize an MCP OAuth client;
+5. explicitly select tools within their allowance (MCP OAuth also selects a duration).
 
-The administrator can see status and metadata but not PAT or MCP token plaintext.
+Select all on OAuth consent selects only the tools currently offered, never
+expands admin allowances and never submits approval. Existing grants do not grow
+automatically when new tools are enabled.
+
+The administrator can see status and metadata but not user PAT, Forgejo OAuth
+access/refresh tokens or MCP token plaintext. Application Client Secret is also
+write-only; a saved Secret is never displayed again.
 
 ## 7. Review audit records
 

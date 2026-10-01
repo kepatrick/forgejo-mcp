@@ -45,6 +45,17 @@ class RedactingTextFormatter(logging.Formatter):
         return _redact_text(super().format(record))
 
 
+class OAuthCallbackAccessFilter(logging.Filter):
+    """Uvicorn owns its formatter; redact callback queries before it sees them."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.args, tuple) and len(record.args) == 5:
+            client, method, path, version, status = record.args
+            if isinstance(path, str) and "/api/me/credential/oauth/callback" in path:
+                record.args = (client, method, path.split("?", 1)[0], version, status)
+        return True
+
+
 def configure_logging(level: str, log_format: str = "json") -> None:
     handler = logging.StreamHandler()
     if log_format == "json":
@@ -54,6 +65,9 @@ def configure_logging(level: str, log_format: str = "json") -> None:
             RedactingTextFormatter("%(asctime)s %(levelname)s %(name)s %(message)s")
         )
     logging.basicConfig(level=level.upper(), handlers=[handler], force=True)
+    access_logger = logging.getLogger("uvicorn.access")
+    if not any(isinstance(item, OAuthCallbackAccessFilter) for item in access_logger.filters):
+        access_logger.addFilter(OAuthCallbackAccessFilter())
 
 
 def _redact_value(value: Any, *, key: str | None = None) -> Any:

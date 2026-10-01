@@ -1,0 +1,8 @@
+# Optional confidential Forgejo OAuth client secret mount.
+# Use alongside compose.yaml only when the Forgejo application is confidential.
+services:
+  app:
+    environment:
+      FMCP_FORGEJO_OAUTH_CLIENT_SECRET_FILE: /run/secrets/forgejo_oauth_client_secret
+    volumes:
+      - ${FMCP_FORGEJO_OAUTH_CLIENT_SECRET_FILE:?set host secret file path}:/run/secrets/forgejo_oauth_client_secret:ro

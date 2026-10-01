@@ -58,7 +58,7 @@ def test_consent_uses_shared_card_and_keeps_safety_details():
 @pytest.mark.parametrize(
     "reason, message",
     [
-        ("credential_required", "verified Forgejo PAT"),
+        ("credential_required", "verified Forgejo credential"),
         ("tools_required", "tool allowance"),
         ("account_required", "Administrator accounts cannot"),
         ("user_unavailable", "not active"),

@@ -43,15 +43,18 @@ class CredentialCipher:
         return cls(key, key_version)
 
     @staticmethod
-    def associated_data(user_id: uuid.UUID, key_version: int) -> bytes:
-        return f"forgejo-credential:{user_id}:v{key_version}".encode()
+    def associated_data(user_id: uuid.UUID, key_version: int, purpose: str = "access") -> bytes:
+        legacy = f"forgejo-credential:{user_id}:v{key_version}"
+        return (legacy if purpose == "access" else f"{legacy}:{purpose}").encode()
 
-    def encrypt(self, token: str, user_id: uuid.UUID) -> EncryptedCredential:
+    def encrypt(
+        self, token: str, user_id: uuid.UUID, *, purpose: str = "access"
+    ) -> EncryptedCredential:
         nonce = os.urandom(NONCE_BYTES)
         ciphertext = self.aesgcm.encrypt(
             nonce,
             token.encode("utf-8"),
-            self.associated_data(user_id, self.key_version),
+            self.associated_data(user_id, self.key_version, purpose),
         )
         return EncryptedCredential(ciphertext, nonce, self.key_version)
 
@@ -62,6 +65,7 @@ class CredentialCipher:
         nonce: bytes,
         user_id: uuid.UUID,
         key_version: int,
+        purpose: str = "access",
     ) -> str:
         if key_version != self.key_version:
             raise CredentialKeyError("credential encryption key version is unavailable")
@@ -69,7 +73,7 @@ class CredentialCipher:
             plaintext = self.aesgcm.decrypt(
                 nonce,
                 ciphertext,
-                self.associated_data(user_id, key_version),
+                self.associated_data(user_id, key_version, purpose),
             )
         except InvalidTag as error:
             raise CredentialKeyError("credential authentication failed") from error

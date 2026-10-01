@@ -6,6 +6,40 @@
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-01
+
+### 新增
+
+- 可選用的 Forgejo 帳號 OAuth 連結，與 MCP client OAuth 分開：session-bound PKCE S256、加密的個別使用者 access／refresh tokens、身分驗證與序列化 lazy refresh；保留 scoped PAT 支援（migration 0015）。
+- Admin Dashboard OAuth application 設定：Client ID、加密且不回傳原文的 Client Secret、相符的 Public／Confidential 模式、MCP 對外 base URL 與固定可複製的 redirect URL；不需重啟即可套用（migration 0016）。
+- MCP consent 的 Select all／Clear selection，只作用於當下允許的工具；不預選、不自動授權，也不擴大既有 grants。
+- 中英文配置、疑難排解、權限界線與撤銷指南，並同步管理員／使用者流程。
+
+### 安全性
+
+- 將前端開發依賴 `brace-expansion` 更新至已修補版本；針對性 lockfile 更新後 npm audit 未發現已知漏洞。
+- Application 設定要求 admin／CSRF 驗證，稽核不記錄密鑰；未完成授權綁定設定版本，替換憑證前重新檢查。
+- 保留 Strict Dashboard cookies，搭配獨立一次性的 callback binding；驗證指定 username／numeric identity、固定可信 Forgejo destinations、限制 token response，並遮蔽 callback query。
+- 區分 OAuth Bearer 與 PAT authentication，採用不同 encryption purposes，refresh 不跨越憑證／grant 界線。
+
+### 修正
+
+- 設定使用 shared read locks 讓多位使用者並行，設定變更與個別使用者 refresh 仍序列化。
+- 桌面及手機 consent 的全選按鈕與工具清單保持間距。
+
+### 部署與升級注意事項
+
+- 正式支援 Forgejo 16.0.3，16.0.2 僅為 comparison baseline；舊版本的單次手動讀取不等於相容性保證。
+- Schema head 為 `20261001_0016`。備份 PostgreSQL、部署設定與 credential keys，停止舊 App workers，使用相符 release code 升級；不要重新產生密鑰或執行 `down -v`。
+- Migrations 0015／0016 升級時保留既有 PAT 與 grants；未完成的舊 Forgejo 授權需重開。已儲存的 Dashboard 設定優先於部署 defaults，包含明確停用。
+- Downgrade 會撤銷本地 OAuth 憑證，不會將它們視為 PAT；0016 也刪除 pending attempts 及 Dashboard client 設定。請使用協調的備份／回滾計畫；若需維持停用，先清除部署 defaults。
+
+### 已知限制
+
+- Forgejo OAuth 沒有細分 API scopes。MCP 是工具層級政策，不是獨立 repository／path allowlist；需要更窄的上游權限時使用 scoped PAT 或限制 Forgejo 帳號 membership。
+- 清除本地憑證／設定或停止 server 不會撤銷 Forgejo application approval；MCP 與 Forgejo grants 的生命週期分開。
+- 既有 CIMD DNS 再解析／rebinding 風險，以及 `/token` 非 ASCII resource 驗證回傳 HTTP 500 的問題仍未修正；非必要不要啟用 CIMD，並閱讀 `docs/security/oauth-2.1.md`。
+
 ## [0.3.0] - 2026-09-30
 
 ### 新增

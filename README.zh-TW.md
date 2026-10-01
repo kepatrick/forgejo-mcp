@@ -1,5 +1,9 @@
 # Forgejo MCP
 
+選用的 [MCP OAuth 授權（英文）](docs/security/oauth-2.1.md)預設停用。
+啟用前請閱讀[升級與回滾注意事項（英文）](docs/security/oauth-upgrade.md)。
+Claude／OpenAI 連線失敗時，請參閱[連線與 edge 疑難排解（英文）](docs/oauth-client-edge-troubleshooting.md)。
+
 目前 `main` branch 需要 Forgejo 16.0.3。Forgejo 16.0.2 只保留為 comparison baseline；詳見[版本相容性矩陣](docs/compatibility.zh-TW.md)。
 
 升級既有部署？請先閱讀[安全加固升級指南](docs/security/upgrade-hardening.zh-TW.md)。
@@ -46,7 +50,7 @@ Web Dashboard ──admin/user──> 權限、credential 與 audit records
                               PostgreSQL
 ```
 
-Forgejo MCP 不會取代 Forgejo 本身的授權。工具必須已全域啟用、允許該使用者使用、授權給該 MCP token，並且使用者的 Forgejo 帳號與憑證也有對應權限，才會出現在 MCP client 中。
+Forgejo MCP 不會取代 Forgejo 本身的授權。工具必須已全域啟用、允許該使用者使用、授權給該 MCP token，並且使用者的 Forgejo 帳號與憑證也有對應權限，才會出現在 MCP client 中。Forgejo OAuth 帳號連結與 MCP OAuth client 授權是兩段獨立流程。
 
 ## 系統需求
 
@@ -171,7 +175,15 @@ npm run typecheck --prefix frontend
 npm run build --prefix frontend
 ```
 
-Forgejo 開發預設使用正式支援的官方 mirror `data.forgejo.org/forgejo/forgejo:16.0.3-rootless`；正式支援的 16.0.3 contract 與 16.0.2 comparison baseline 都有鎖定的 Swagger checksum。可以使用下列指令驗證已知 contract：
+Forgejo 預設使用 `codeberg.org/forgejo/forgejo:16.0.3-rootless`，測試 Forgejo image 預設從官方主要 registry 取得。Runner 則依 Forgejo 文件，獨立使用 `data.forgejo.org/forgejo/runner:13`，不假設 Codeberg 也提供相同 image。若 Forgejo 主要 registry 無法使用，可以明確選擇官方 mirror，不更動 image 版本：
+
+```bash
+FORGEJO_IMAGE_REGISTRY=data.forgejo.org ./scripts/test-full-docker-e2e.sh
+```
+
+`FORGEJO_RUNNER_IMAGE_REGISTRY` 可獨立覆寫 runner registry（預設：`data.forgejo.org`）。
+
+`FORGEJO_IMAGE` 可覆寫完整 Forgejo image reference，且優先於 registry 設定。正式支援的 16.0.3 contract 與 16.0.2 comparison baseline 都有鎖定的 Swagger checksum。可以使用下列指令驗證已知 contract：
 
 ```bash
 uv run python scripts/verify_forgejo_openapi.py https://forgejo.example/swagger.v1.json

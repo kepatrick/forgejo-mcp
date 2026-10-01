@@ -364,6 +364,9 @@ def create_oauth_routes(service: OAuthService, settings: Settings) -> list[Route
             headers={"Cache-Control": "public, max-age=86400"},
         )
 
+    async def oauth_consent_script(_request: Request) -> Response:
+        return Response(_OAUTH_SCRIPT, media_type="application/javascript")
+
     resource_metadata_path = _resource_metadata_path(service.resource_url)
     return [
         Route(
@@ -396,6 +399,7 @@ def create_oauth_routes(service: OAuthService, settings: Settings) -> list[Route
         Route("/oauth/login", endpoint=oauth_login, methods=["POST"]),
         Route("/oauth/consent", endpoint=resolve_consent, methods=["POST"]),
         Route("/oauth/styles.css", endpoint=oauth_styles, methods=["GET"]),
+        Route("/oauth/consent.js", endpoint=oauth_consent_script, methods=["GET"]),
     ]
 
 
@@ -532,6 +536,10 @@ def _consent_page(
         "<p class='description'>Choose at least one tool for this connection. Nothing is "
         "selected by default. Only tools enabled and allowed by your administrator appear; "
         "your Forgejo account permissions and credential may further limit access.</p>"
+        "<div class='actions'><button type='button' class='secondary' "
+        "data-tool-selection='all' disabled>Select all</button>"
+        "<button type='button' class='secondary' data-tool-selection='none' "
+        "disabled>Clear selection</button></div>"
         f"<div class='tokenToolGrid'>{tool_options}</div></fieldset>"
         "<div class='actions'><button type='submit' name='action' "
         "value='approve'>Authorize</button>"
@@ -541,6 +549,7 @@ def _consent_page(
         "in the Dashboard's MCP tokens section at any time. Refresh will not add unselected "
         "tools or extend the chosen authorization duration. Deny returns to your MCP client "
         "without granting access.</p></section>"
+        f"<script defer src='/oauth/consent.js?v={_OAUTH_SCRIPT_VERSION}'></script>"
     )
 
 
@@ -649,3 +658,5 @@ def _consent_guidance(
 # One stylesheet is packaged for both the Vite Dashboard and backend OAuth pages.
 _OAUTH_CSS = files("forgejo_mcp").joinpath("static/dashboard.css").read_text(encoding="utf-8")
 _OAUTH_CSS_VERSION = hashlib.sha256(_OAUTH_CSS.encode()).hexdigest()[:12]
+_OAUTH_SCRIPT = files("forgejo_mcp").joinpath("static/oauth-consent.js").read_text(encoding="utf-8")
+_OAUTH_SCRIPT_VERSION = hashlib.sha256(_OAUTH_SCRIPT.encode()).hexdigest()[:12]

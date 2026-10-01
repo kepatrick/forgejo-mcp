@@ -113,6 +113,7 @@ button.danger { color: #8c2f2f; background: #f8e6e6; }
 .oauthConsent { max-width: 56rem; width: min(100%, 56rem); }
 .oauthTools { min-width: 0; margin: 0; padding: 0; border: 0; }
 .oauthTools legend { font-weight: 700; }
+.oauthTools > .actions { justify-content: flex-start; margin-bottom: 1rem; }
 .oauthTools .description { max-width: none; margin: 0.75rem 0 1rem; font-size: 0.95rem; }
 .oauthTools .toolChoice span { overflow-wrap: anywhere; }
 .oauthDetails { margin: 1.5rem 0; overflow-wrap: anywhere; }

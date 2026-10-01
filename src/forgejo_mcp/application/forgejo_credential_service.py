@@ -1,6 +1,7 @@
+import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,17 +12,21 @@ from forgejo_mcp.application.errors import (
     NotFound,
     ValidationFailed,
 )
+from forgejo_mcp.application.forgejo_oauth_config_service import ForgejoOAuthConfigService
 from forgejo_mcp.auth.passwords import normalize_username
 from forgejo_mcp.config import Settings
 from forgejo_mcp.credentials import CredentialCipher, CredentialKeyError
-from forgejo_mcp.db.models import CredentialStatus, ForgejoCredential, User
+from forgejo_mcp.db.models import CredentialStatus, ForgejoCredential, RecordStatus, User
 from forgejo_mcp.db.repositories import (
     AuditRepository,
     ForgejoCredentialRepository,
     ForgejoInstanceRepository,
     UserRepository,
 )
-from forgejo_mcp.forgejo.client import ForgejoClient
+from forgejo_mcp.forgejo.client import ForgejoClient, ForgejoOAuthToken
+from forgejo_mcp.forgejo.oauth import ForgejoOAuthClientConfiguration, ForgejoOAuthTokens
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -77,11 +82,18 @@ class ForgejoCredentialService:
         actor_account_id: uuid.UUID,
         user_id: uuid.UUID,
         token: str,
+        oauth: bool = False,
     ) -> VerifiedForgejoPrincipal:
         normalized_token = token.strip()
-        if not normalized_token or len(normalized_token) > 2048:
-            raise ValidationFailed("personal access token is invalid")
+        if not normalized_token or len(normalized_token) > (8192 if oauth else 2048):
+            raise ValidationFailed("Forgejo credential is invalid")
         user = await self.get_user(user_id)
+        if user.status != RecordStatus.ACTIVE:
+            logger.warning(
+                "forgejo_credential_verification_rejected",
+                extra={"reason": "user_inactive", "user_id": str(user_id)},
+            )
+            raise ValidationFailed("active user account required")
         instance = await self.instances.primary()
         if instance is None:
             raise Conflict("Forgejo instance is not configured")
@@ -97,7 +109,7 @@ class ForgejoCredentialService:
         try:
             principal = await self.client.get_current_user(
                 base_url=instance.base_url,
-                token=normalized_token,
+                token=ForgejoOAuthToken(normalized_token) if oauth else normalized_token,
                 verify_tls=instance.verify_tls,
             )
         except ValidationFailed:
@@ -135,12 +147,38 @@ class ForgejoCredentialService:
         actor_account_id: uuid.UUID,
         user_id: uuid.UUID,
         token: str,
+        oauth_tokens: ForgejoOAuthTokens | None = None,
+        oauth_configuration: ForgejoOAuthClientConfiguration | None = None,
+        oauth_instance_url: str | None = None,
     ) -> ForgejoCredential:
         principal = await self.verify(
             actor_account_id=actor_account_id,
             user_id=user_id,
             token=token,
+            oauth=oauth_tokens is not None,
         )
+        effective_oauth_configuration = None
+        if oauth_tokens is not None:
+            effective_oauth_configuration = await ForgejoOAuthConfigService(
+                self.session, self.settings
+            ).resolve(lock=True)
+            instance = await self.instances.primary()
+            if instance is not None:
+                await self.session.refresh(instance, with_for_update={"read": True})
+            if (
+                effective_oauth_configuration is None
+                or instance is None
+                or (
+                    oauth_configuration is not None
+                    and effective_oauth_configuration != oauth_configuration
+                )
+                or (oauth_instance_url is not None and instance.base_url != oauth_instance_url)
+            ):
+                logger.warning(
+                    "forgejo_oauth_credential_save_rejected",
+                    extra={"reason": "configuration_changed", "user_id": str(user_id)},
+                )
+                raise ConfigurationUnavailable("Forgejo OAuth configuration changed; reconnect")
         cipher = self.cipher()
         encrypted = cipher.encrypt(token.strip(), user_id)
         now = datetime.now(UTC)
@@ -162,6 +200,21 @@ class ForgejoCredentialService:
             verified_at=now,
             activated_at=now,
         )
+        if oauth_tokens is not None:
+            instance = await self.instances.primary()
+            assert instance is not None
+            refresh = cipher.encrypt(
+                oauth_tokens.refresh_token.get_secret_value(),
+                user_id,
+                purpose="oauth-refresh",
+            )
+            credential.kind = "oauth"
+            credential.encrypted_refresh_token = refresh.ciphertext
+            credential.refresh_nonce = refresh.nonce
+            credential.access_expires_at = now + timedelta(seconds=oauth_tokens.expires_in)
+            credential.oauth_base_url = instance.base_url
+            assert effective_oauth_configuration is not None
+            credential.oauth_client_id = effective_oauth_configuration.client_id
         self.credentials.add(credential)
         try:
             await self.session.flush()
@@ -208,6 +261,11 @@ class ForgejoCredentialService:
 
     async def decrypted_token_for_user(self, user_id: uuid.UUID) -> str:
         credential = await self.credentials.active_for_user(user_id)
+        if credential is not None and credential.kind == "oauth":
+            # Imported locally because the linking service reuses PAT verification/storage.
+            from forgejo_mcp.application.forgejo_oauth_service import ForgejoOAuthService
+
+            return await ForgejoOAuthService(self.session, self.settings).access_token(user_id)
         if credential is None or credential.encrypted_token is None or credential.nonce is None:
             raise NotFound("active Forgejo credential not found")
         return self.cipher().decrypt(
@@ -245,4 +303,6 @@ class ForgejoCredentialService:
         credential.status = CredentialStatus.REVOKED
         credential.encrypted_token = None
         credential.nonce = None
+        credential.encrypted_refresh_token = None
+        credential.refresh_nonce = None
         credential.revoked_at = revoked_at

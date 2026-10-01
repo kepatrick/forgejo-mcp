@@ -2,7 +2,7 @@
 
 [English](admin-guide.md)
 
-本指南說明 v0.1.0 Dashboard 中的 Forgejo 連線、使用者 onboarding 與 MCP 工具權限管理流程。請先依照[快速入門](getting-started.zh-TW.md)安裝並啟動服務。
+本指南說明 Dashboard 中的 Forgejo 連線、使用者 onboarding 與 MCP 工具權限管理流程。請先依照[快速入門](getting-started.zh-TW.md)安裝並啟動服務。
 
 ## 管理模型
 
@@ -17,7 +17,7 @@ user tool allowance
         +
 token-specific grant
         +
-Forgejo account and PAT permission
+Forgejo account and PAT/OAuth permission
         =
 MCP client 可以使用該工具
 ```
@@ -59,6 +59,15 @@ MCP client 可以使用該工具
 
 目前 source 正式支援 Forgejo `16.0.3+gitea-1.22.0`；Forgejo 16.0.2 只保留為 comparison baseline。連接其他版本前請先閱讀[版本相容性矩陣](compatibility.zh-TW.md)。
 
+### 選用：配置 Forgejo OAuth
+
+在 Forgejo **使用者設定 → Applications** 註冊一個 application，不使用 instance-wide admin application。
+Admin 在 **Forgejo OAuth settings** 勾選啟用、填入 Client ID、選擇相符的 Public／Confidential 模式、填入 Confidential Secret，以及 **Dashboard** 對外 base URL；把旁邊的固定 redirect URL 複製回 Forgejo。
+儲存立即生效，Secret 加密且不回傳原文；已儲存的停用設定同樣優先於部署環境變數。
+
+每位受邀 user 仍需自行連結指定的 Forgejo 身分。Forgejo OAuth 沒有細分 API scopes，MCP 也沒有獨立 repository allowlist；需要更窄權限時使用 scoped PAT 或限制 Forgejo 帳號／team membership。
+詳見 [Forgejo OAuth 配置與權限限制](security/forgejo-oauth.zh-TW.md)。
+
 ## 3. 設定全域工具
 
 檢查 50 個工具，並只啟用組織預計提供的工具。Global disable 是最高層的 kill switch：停用後，所有使用者與 token 都無法使用該工具。
@@ -99,12 +108,14 @@ Least privilege 建議：
 使用者必須：
 
 1. 登入 Dashboard；
-2. 提交 scoped Forgejo PAT；
-3. 通過 username verification；
-4. 建立只顯示一次的 MCP token；
-5. 在 allowance 範圍內選擇授權給 token 的工具。
+2. 提交 scoped PAT，或連結 Forgejo OAuth；
+3. 通過指定 Forgejo 身分驗證；
+4. 建立只顯示一次的靜態 MCP token，或授權 MCP OAuth client；
+5. 在 allowance 範圍內明確選擇工具；MCP OAuth 也要選擇有效期限。
 
-管理員可以查看狀態與 metadata，但不能查看 PAT 或 MCP token 明文。
+OAuth consent 的 Select all 只選取當下允許的工具，不擴大 admin allowance、不自動送出授權。新增工具或增加 allowance 不會自動擴大既有 grants。
+
+管理員可以查看狀態與 metadata，但不能查看使用者 PAT、Forgejo OAuth access／refresh token 或 MCP token 明文。Application Client Secret 也只可寫入，不會再次顯示。
 
 ## 7. 檢查稽核紀錄
 

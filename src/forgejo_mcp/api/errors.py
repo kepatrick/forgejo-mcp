@@ -1,5 +1,9 @@
+import logging
+
 from fastapi import Request, status
-from fastapi.responses import JSONResponse
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
 
 from forgejo_mcp.application.errors import (
     ApplicationError,
@@ -12,6 +16,25 @@ from forgejo_mcp.application.errors import (
     NotFound,
     ValidationFailed,
 )
+
+logger = logging.getLogger(__name__)
+
+
+async def request_validation_error_handler(request: Request, error: Exception) -> Response:
+    assert isinstance(error, RequestValidationError)
+    if request.scope.get("path") == "/api/forgejo/instance/oauth":
+        # Pydantic's error inputs can contain raw secrets, even in malformed/extra fields.
+        logger.warning(
+            "forgejo_oauth_configuration_validation_failed",
+            extra={"reason": "invalid_request_shape"},
+        )
+        return JSONResponse(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            content={"detail": "Invalid Forgejo OAuth settings request"},
+            headers={"Cache-Control": "no-store"},
+        )
+    return await request_validation_exception_handler(request, error)
+
 
 _STATUS_BY_ERROR: list[tuple[type[ApplicationError], int]] = [
     (AuthenticationFailed, status.HTTP_401_UNAUTHORIZED),

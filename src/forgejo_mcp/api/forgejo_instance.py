@@ -1,10 +1,12 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Response
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
 from forgejo_mcp.api.dependencies import ForgejoInstanceServiceDep
+from forgejo_mcp.application.forgejo_oauth_config_service import ForgejoOAuthConfigService
 from forgejo_mcp.authorization.policies import AdminCsrfSession, AdminSession
 from forgejo_mcp.db.models import ForgejoInstance
 
@@ -48,6 +50,56 @@ def instance_response(instance: ForgejoInstance | None) -> ForgejoInstanceRespon
         version=instance.version,
         last_checked_at=instance.last_checked_at,
     )
+
+
+class ForgejoOAuthSettingsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    client_id: str = Field(default="", max_length=128)
+    base_url: str = Field(min_length=1, max_length=2048)
+    client_type: Literal["public", "confidential"] = "confidential"
+    client_secret: SecretStr | None = None
+
+
+class ForgejoOAuthSettingsResponse(BaseModel):
+    enabled: bool
+    client_id: str
+    base_url: str
+    redirect_url: str
+    client_type: Literal["public", "confidential"]
+    secret_configured: bool
+    source: Literal["dashboard", "environment", "unconfigured"]
+
+
+@router.get("/oauth", response_model=ForgejoOAuthSettingsResponse)
+async def get_oauth_settings(
+    response: Response,
+    _admin: AdminSession,
+    service: ForgejoInstanceServiceDep,
+) -> ForgejoOAuthSettingsResponse:
+    response.headers["Cache-Control"] = "no-store"
+    result = await ForgejoOAuthConfigService(service.session, service.settings).public()
+    return ForgejoOAuthSettingsResponse.model_validate(result, from_attributes=True)
+
+
+@router.put("/oauth", response_model=ForgejoOAuthSettingsResponse)
+async def save_oauth_settings(
+    payload: ForgejoOAuthSettingsRequest,
+    response: Response,
+    admin: AdminCsrfSession,
+    service: ForgejoInstanceServiceDep,
+) -> ForgejoOAuthSettingsResponse:
+    response.headers["Cache-Control"] = "no-store"
+    result = await ForgejoOAuthConfigService(service.session, service.settings).save(
+        actor_account_id=admin.account_id,
+        enabled=payload.enabled,
+        client_id=payload.client_id,
+        base_url=payload.base_url,
+        client_type=payload.client_type,
+        client_secret=payload.client_secret,
+    )
+    return ForgejoOAuthSettingsResponse.model_validate(result, from_attributes=True)
 
 
 @router.get("", response_model=ForgejoInstanceResponse)

@@ -10,7 +10,7 @@
 
 Forgejo MCP 是一套自架的 [Model Context Protocol](https://modelcontextprotocol.io/) 伺服器與管理 Dashboard，讓公司能以集中治理、可控且可觀測的方式，開放 AI client 操作既有 Forgejo instance。
 
-每位使用者透過自己的 scoped Forgejo personal access token（PAT）操作 Forgejo；管理員則決定哪些 MCP 工具可全域使用、可提供給特定使用者，以及可授權給只顯示一次的 MCP token。
+每位使用者可透過自己的 scoped Forgejo personal access token（PAT），或選用 [Forgejo OAuth 配置與權限指南](docs/security/forgejo-oauth.zh-TW.md)操作 Forgejo。這與「MCP client 連入 Forgejo MCP」的 OAuth 是兩段不同的授權。Forgejo OAuth 沒有細分 API scopes，需要更窄的上游權限時仍應使用 scoped PAT；管理員設定全域及使用者工具上限，使用者再選擇各 MCP token 的工具權限。
 
 > **v0.1.0 是第一個開源版本，支援 Forgejo 16.0.2。** v0.2.0 release line 與目前 `main` 支援 Forgejo 16.0.3，並包含 deployment security 變更。正式使用前請閱讀[相容性矩陣](docs/compatibility.zh-TW.md)、[升級指南](docs/security/upgrade-hardening.zh-TW.md)與[已知限制](docs/known-limitations.zh-TW.md)。
 
@@ -18,9 +18,10 @@ Forgejo MCP 是一套自架的 [Model Context Protocol](https://modelcontextprot
 
 - 提供 50 個工具，涵蓋 repository、組織 repository 建立、migration 與 pull mirror 管理、git tree、branch、commit、label、milestone、Issue、pull request、review、Actions run、job、log、artifact、tag 與 release。
 - 在 Forgejo 原有權限之外，增加全域、使用者與 token 三層工具授權。
-- 使用者透過已驗證且限制權限範圍的 Forgejo PAT，以自己的 Forgejo 身分操作。
-- 使用 AES-256-GCM 加密儲存 PAT，MCP token 只顯示一次。
+- 使用者透過已驗證的 scoped PAT 或 Forgejo OAuth，以自己的 Forgejo 身分操作；OAuth 沒有細分 API scopes。
+- 使用 AES-256-GCM 加密儲存 Forgejo access／refresh 憑證，靜態 MCP token 只顯示一次。
 - 透過 Web Dashboard 管理 Forgejo 連線、使用者、權限及稽核紀錄。
+- Admin 可在 Forgejo OAuth settings 設定 Client ID、加密儲存的 Client Secret 與 MCP 對外 base URL；callback 路徑固定，旁邊顯示可複製的完整 redirect URL，儲存後立即生效，不需重啟。
 - 提供遮蔽敏感資訊的 invocation audit、structured logs、health endpoints 與 Prometheus metrics。
 
 ## 為公司設計的 MCP 治理層
@@ -28,7 +29,7 @@ Forgejo MCP 是一套自架的 [Model Context Protocol](https://modelcontextprot
 Forgejo MCP 的定位不只是另一個 Forgejo API wrapper，而是公司 AI client 與 Forgejo 之間的治理層。
 
 - **權限可管理：** 管理員可以集中控制全域啟用的工具、每位使用者可用的工具，以及每個 MCP token 實際取得的工具。
-- **操作可控：** AI client 不會取得不受限制的共用 Forgejo token；每次操作仍受使用者 PAT scope、Forgejo repository permission 與 server-side input limit 約束。
+- **操作可控：** AI client 不會取得共用 Forgejo token；每次操作仍受 MCP 工具政策、Forgejo repository permission 與 server-side input limit 約束。使用 PAT 時也受其 scopes 限制；Forgejo OAuth 本身沒有細分 API scopes。
 - **身分可追溯：** 每個 MCP token 都對應特定使用者與 client，避免所有操作隱藏在共用 service account 後方。
 - **行為可稽核：** 系統會記錄工具、使用者、操作目標、授權結果、執行狀態、時間與 correlation ID，並遮蔽敏感資訊。
 - **服務可觀測：** Structured logs、health checks、Prometheus metrics，以及 request/user/invocation correlation，可協助公司掌握服務狀態與操作情形。
@@ -38,14 +39,14 @@ Forgejo MCP 的定位不只是另一個 Forgejo API wrapper，而是公司 AI cl
 ## 運作方式
 
 ```text
-MCP client ──Bearer token──> Forgejo MCP /mcp ──user PAT──> Forgejo API
+MCP client ──Bearer token──> Forgejo MCP /mcp ──user PAT/OAuth──> Forgejo API
                                   │
 Web Dashboard ──admin/user──> 權限、credential 與 audit records
                                   │
                               PostgreSQL
 ```
 
-Forgejo MCP 不會取代 Forgejo 本身的授權。工具必須已全域啟用、允許該使用者使用、授權給該 MCP token，並且使用者的 Forgejo 帳號與 PAT 也有對應權限，才會出現在 MCP client 中。
+Forgejo MCP 不會取代 Forgejo 本身的授權。工具必須已全域啟用、允許該使用者使用、授權給該 MCP token，並且使用者的 Forgejo 帳號與憑證也有對應權限，才會出現在 MCP client 中。
 
 ## 系統需求
 
@@ -110,8 +111,8 @@ Logs、停止服務、清除資料、常見啟動錯誤，以及選用的本地 
 3. 全域啟用需要的工具。
 4. 建立使用者、設定其 expected Forgejo username，並傳送一次性邀請。
 5. 設定該使用者的工具 allowance。
-6. 由使用者驗證 scoped Forgejo PAT 並建立 MCP token。
-7. 將需要的工具授權給該 token。
+6. 由使用者驗證 scoped PAT，或依[配置與權限指南](docs/security/forgejo-oauth.zh-TW.md)連結 Forgejo OAuth。
+7. 建立具有明確工具 grants 的靜態 MCP token，或在 MCP OAuth consent 選擇期限與工具。
 8. 將 MCP client 連線至 `POST /mcp`。
 
 完整流程請參閱[管理員指南](docs/admin-guide.zh-TW.md)與[使用者指南](docs/user-guide.zh-TW.md)。
@@ -135,6 +136,8 @@ MCP token 只會顯示一次，請存放在 client 的 secret storage；系統�
 | 安裝並啟動服務 | [快速入門](docs/getting-started.zh-TW.md) |
 | 設定 Forgejo、使用者與權限 | [管理員指南](docs/admin-guide.zh-TW.md) |
 | 建立 PAT 與 MCP token | [使用者指南](docs/user-guide.zh-TW.md) |
+| 配置 Forgejo OAuth 並理解權限限制 | [Forgejo OAuth 配置與權限指南](docs/security/forgejo-oauth.zh-TW.md) |
+| 啟用 MCP client OAuth 與管理生命週期 | [MCP OAuth 運作指南（英文）](docs/security/oauth-upgrade.md) |
 | 連接 MCP client | [MCP client 設定](docs/mcp-client-configuration.zh-TW.md) |
 | 查詢 MCP 與 Forgejo 版本支援 | [版本相容性](docs/compatibility.zh-TW.md) |
 | 確認目前限制 | [已知限制](docs/known-limitations.zh-TW.md) |

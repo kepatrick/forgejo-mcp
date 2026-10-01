@@ -121,6 +121,8 @@ class UserService:
                 credential.status = CredentialStatus.REVOKED
                 credential.encrypted_token = None
                 credential.nonce = None
+                credential.encrypted_refresh_token = None
+                credential.refresh_nonce = None
                 credential.revoked_at = datetime.now(UTC)
                 credential_revoked = True
         user.display_name = display_name
@@ -155,6 +157,8 @@ class UserService:
             credential.status = CredentialStatus.REVOKED
             credential.encrypted_token = None
             credential.nonce = None
+            credential.encrypted_refresh_token = None
+            credential.refresh_nonce = None
             credential.revoked_at = now
         self.audit.record(
             actor_account_id=actor_account_id,

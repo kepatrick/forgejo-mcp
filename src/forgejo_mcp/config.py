@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     mcp_rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
     mcp_token_rate_limit_requests: int = Field(default=120, ge=1, le=10000)
     mcp_user_rate_limit_requests: int = Field(default=240, ge=1, le=20000)
+    forgejo_oauth_client_id: str | None = Field(default=None, min_length=1, max_length=128)
+    forgejo_oauth_client_secret_file: Path | None = None
+    forgejo_oauth_redirect_url: str | None = None
     oauth_enabled: bool = False
     oauth_issuer_url: str | None = None
     oauth_resource_url: str | None = None
@@ -64,6 +67,38 @@ class Settings(BaseSettings):
     shutdown_grace_period_seconds: float = Field(default=30.0, ge=0.1, le=300.0)
     credential_encryption_key_file: Path | None = None
     credential_encryption_key_version: int = Field(default=1, ge=1)
+
+    @field_validator(
+        "forgejo_oauth_client_id",
+        "forgejo_oauth_redirect_url",
+        "forgejo_oauth_client_secret_file",
+        mode="before",
+    )
+    @classmethod
+    def optional_forgejo_oauth_value(cls, value: object) -> object:
+        return None if value == "" else value
+
+    @model_validator(mode="after")
+    def validate_forgejo_oauth(self) -> "Settings":
+        if bool(self.forgejo_oauth_client_id) != bool(self.forgejo_oauth_redirect_url):
+            raise ValueError("Forgejo OAuth requires both client ID and redirect URL")
+        if self.forgejo_oauth_client_secret_file and not self.forgejo_oauth_client_id:
+            raise ValueError("Forgejo OAuth client secret requires a client ID")
+        if self.forgejo_oauth_redirect_url:
+            self.forgejo_oauth_redirect_url = _normalize_oauth_url(
+                self.forgejo_oauth_redirect_url,
+                "Forgejo OAuth redirect URL",
+            )
+            if (
+                urlsplit(self.forgejo_oauth_redirect_url).path
+                != "/api/me/credential/oauth/callback"
+            ):
+                raise ValueError("Forgejo OAuth redirect URL must use the credential callback path")
+            if self.environment == "production" and not self.forgejo_oauth_redirect_url.startswith(
+                "https://"
+            ):
+                raise ValueError("production Forgejo OAuth callback must use HTTPS")
+        return self
 
     @field_validator("mcp_allowed_origins")
     @classmethod

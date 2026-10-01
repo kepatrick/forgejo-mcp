@@ -8,10 +8,16 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 
 ## [Unreleased]
 
+### Added
+
+- Admin Dashboard Forgejo OAuth settings: Client ID, encrypted/write-only Client Secret, public/confidential client mode and MCP public base URL with a fixed, copyable redirect URL; apply immediately without restarting (migration 0016).
+- Admin/CSRF protection, audited settings changes, explicit database-over-environment precedence and pending-authorization invalidation on configuration changes; preserve existing PATs and grants.
+
 ## [0.3.0] - 2026-09-30
 
 ### Added
 
+- Opt-in Forgejo OAuth credential linking with session-bound PKCE, encrypted access/refresh tokens, lazy serialized refresh and a Dashboard connection button; PATs remain supported. See `docs/security/forgejo-oauth.md` before migration 0015.
 - Opt-in OAuth authorization with PKCE S256, dynamic registration, bounded consent lifetimes and rotating opaque refresh tokens.
 - Transactional family revocation, historical backfill and PostgreSQL concurrency/lifecycle tests; see `docs/security/oauth-upgrade.md` before applying migrations 0009–0012.
 - Claude/OpenAI edge troubleshooting covering discovery, registration, token exchange and Cloudflare bot challenges.

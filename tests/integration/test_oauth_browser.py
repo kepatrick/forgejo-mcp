@@ -154,9 +154,15 @@ def test_consent_cross_origin_callback_in_chromium(action):
                     tools = page.locator('input[name="tool_names"]')
                     assert tools.count() == 18
                     assert page.locator('input[name="tool_names"]:checked').count() == 0
+                    page.get_by_role("button", name="Select all", exact=True).click()
+                    assert page.locator('input[name="tool_names"]:checked').count() == 18
+                    assert not callbacks  # Bulk selection must not submit consent.
+                    page.get_by_role("button", name="Clear selection", exact=True).click()
+                    assert page.locator('input[name="tool_names"]:checked').count() == 0
+                    assert not callbacks
                     if action == "approve":
                         page.locator('select[name="grant_ttl_days"]').select_option("7")
-                        tools.first.check()
+                        page.get_by_role("button", name="Select all", exact=True).click()
                     # Deny must work with no tools selected.
                     with page.expect_navigation():
                         page.locator(f'button[value="{action}"]').click()

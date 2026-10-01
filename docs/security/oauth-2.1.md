@@ -1,5 +1,10 @@
 # OAuth 2.1 security and operations
 
+This is **MCP client → Forgejo MCP** OAuth. Public-client-only restrictions below
+do not describe the separate Forgejo OAuth provider, which supports the configured
+Public or Confidential client mode. See the [Forgejo OAuth configuration and
+permission guide](forgejo-oauth.md) ([繁體中文](forgejo-oauth.zh-TW.md)).
+
 ## Status and compatibility
 
 OAuth is optional and disabled by default. Static `Authorization: Bearer fmcp_...` authentication remains compatible and unchanged. Both modes negotiate MCP Streamable HTTP `2025-06-18` and ultimately use the same token grants and call-time authorization engine.
@@ -11,10 +16,18 @@ The implementation supports authorization code with PKCE S256, exact redirect UR
 OAuth never requests a Forgejo permission and never changes a user's PAT. At issuance, the access token receives exactly:
 
 ```text
-globally enabled tools ∩ user tool allowance
+explicit consent selection ∩ globally enabled tools ∩ user tool allowance
 ```
 
-The ordinary MCP checks still require an active user, active Forgejo credential, active token, global enablement, user allowance and token grant on every tool call. Forgejo then enforces the user's account permissions and existing PAT scopes.
+Consent starts with no tools selected. Select all acts only on the offered tools;
+approval is still explicit. Refresh intersects the previous token grant with
+current permissions, never adds tools and never extends the original consent expiry.
+
+The ordinary MCP checks still require an active user, active Forgejo credential,
+active token, global enablement, user allowance and token grant on every tool call.
+Forgejo then enforces the user's account/resource rights and, for PATs, their scopes.
+Forgejo OAuth has no fine-grained API scopes; MCP's tool selection does not narrow
+the upstream credential itself and is not an independent repository allowlist.
 
 ## Security controls
 
@@ -77,11 +90,13 @@ The ordinary MCP checks still require an active user, active Forgejo credential,
 
 **Fix.** Every OAuth family now has a persisted lock/state row. Rotation locks and verifies that row before the current refresh record; every revocation takes the same lock before enumerating descendants. Whichever transaction wins is authoritative: revocation either sees and disables the committed replacement, or rotation resumes after revocation and fails closed. Migration `20260908_0011` backfills existing families and revokes every descendant of any family with prior revocation evidence. A deterministic PostgreSQL regression test waits for real lock contention and proves that the replacement cannot authenticate after revocation.
 
-No unresolved Critical, High or Medium OAuth finding is known after these patches.
+The historical findings above have fixes. They are not a blanket claim that all
+OAuth risks are resolved; review the residual risks and current limitations below.
 
 ## Residual risks
 
 - CIMD destination validation occurs before the HTTP client's own DNS connection. Exact origin allowlisting substantially limits exposure, but network egress policy remains the final defense against DNS rebinding. Keep the allowlist empty unless CIMD is required.
+- A non-ASCII `resource` submitted to `/token` can still raise in the string `hmac.compare_digest` validation and produce HTTP 500 rather than a clean OAuth error. This is a known unresolved validation defect, not support for arbitrary resources; use the exact configured resource and do not interpret a 500 as successful authorization.
 - The concurrency grace lets a duplicate holder obtain the same replacement pair during its short configured window. It cannot create an independent branch. Keep the grace as short as approved clients permit, set it to `0` for strict replay handling, retain endpoint rate limits and review `oauth.concurrent_refresh_recovered` and `oauth.concurrent_refresh_rejected` events. Family rotation/revocation is serialized in PostgreSQL across processes, but duplicate-response recovery remains process-local; multi-replica deployments are not supported.
 - Reverse proxies and bot controls can distinguish machine clients even when OAuth browser authorization looks identical. Diagnose discovery, DCR, consent and token exchange separately; see [OAuth client and reverse-proxy troubleshooting](../oauth-client-edge-troubleshooting.md).
 - Login/registration rate limits are in-memory because the supported deployment is a single application replica. Multi-replica operation requires a shared limiter before it is supported.

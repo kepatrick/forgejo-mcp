@@ -167,12 +167,60 @@ class ForgejoCredential(Base):
     forgejo_user_id: Mapped[int] = mapped_column(BigInteger)
     forgejo_username: Mapped[str] = mapped_column(String(255))
     normalized_forgejo_username: Mapped[str] = mapped_column(String(255))
+    kind: Mapped[str] = mapped_column(String(20), default="pat", server_default="pat")
+    encrypted_refresh_token: Mapped[bytes | None] = mapped_column(LargeBinary)
+    refresh_nonce: Mapped[bytes | None] = mapped_column(LargeBinary)
+    access_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    oauth_base_url: Mapped[str | None] = mapped_column(String(2048))
+    oauth_client_id: Mapped[str | None] = mapped_column(String(128))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     activated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="forgejo_credentials")
+
+
+class ForgejoOAuthConfiguration(Base):
+    __tablename__ = "forgejo_oauth_configurations"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    slug: Mapped[str] = mapped_column(String(32), unique=True, default="primary")
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    client_id: Mapped[str] = mapped_column(String(128))
+    client_type: Mapped[str] = mapped_column(String(20))
+    base_url: Mapped[str] = mapped_column(String(2048))
+    encrypted_secret: Mapped[bytes | None] = mapped_column(LargeBinary)
+    nonce: Mapped[bytes | None] = mapped_column(LargeBinary)
+    key_version: Mapped[int | None] = mapped_column(Integer)
+    revision: Mapped[uuid.UUID] = mapped_column(Uuid, default=uuid.uuid4)
+    updated_by_account_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("accounts.id", ondelete="RESTRICT")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ForgejoOAuthRequest(Base):
+    __tablename__ = "forgejo_oauth_requests"
+
+    config_revision: Mapped[str] = mapped_column(String(64), default="", server_default="")
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    state_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    browser_token_hash: Mapped[str] = mapped_column(String(64))
+    session_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("sessions.id", ondelete="CASCADE"))
+    instance_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("forgejo_instances.id", ondelete="CASCADE")
+    )
+    base_url: Mapped[str] = mapped_column(String(2048))
+    client_id: Mapped[str] = mapped_column(String(128))
+    redirect_url: Mapped[str] = mapped_column(String(2048))
+    encrypted_verifier: Mapped[bytes] = mapped_column(LargeBinary)
+    nonce: Mapped[bytes] = mapped_column(LargeBinary)
+    key_version: Mapped[int] = mapped_column(Integer)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class McpToken(Base):
